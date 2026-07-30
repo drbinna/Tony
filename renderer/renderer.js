@@ -11,6 +11,7 @@ const els = {
 
 let anam = null;
 let activeStream = null;   // in-flight createTalkMessageStream, if any
+let reconnectTimer = null;
 
 const LABELS = {
   idle: 'Dormant — not watching',
@@ -58,7 +59,13 @@ async function connect() {
   anam = createClient(res.token);
 
   anam.addListener(AnamEvent.SESSION_READY, () => setState('observing'));
-  anam.addListener(AnamEvent.CONNECTION_CLOSED, () => setState('idle'));
+  // Session tokens expire after 3600s (measured). A learning session outlives
+  // that easily, so reconnect rather than going silently dormant mid-lesson.
+  anam.addListener(AnamEvent.CONNECTION_CLOSED, () => {
+    setState('idle');
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(() => connect().catch(() => {}), 2000);
+  });
 
   // Learner talking over Tony is the same signal as the deadman switch:
   // any input means stop. The persona has a scripted beat for it.

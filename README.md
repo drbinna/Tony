@@ -105,9 +105,16 @@ rule about not commenting on things the learner did not ask about.
   is wired to the renderer — instrument it in the first real session.
 - **Anam overhead of 270ms assumes 120ms TTS.** That is an estimate. Replace it
   with a live-session measurement before trusting any number here.
-- **The goblin question is open.** `avatarModel: cara-4` is Anam's photoreal
-  pipeline. Whether a stylized green goblin survives it is a five-minute test in
-  Anam Lab, and a "no" reshapes the character direction.
+- **The goblin question is open, and now narrower.** The account's library was
+  enumerated on 2026-07-30: 10 avatars, all photorealistic humans (Gabriel,
+  Anne, Liv, Mia, Bella, Finn, Johnny, Kenji, Zekhtar, Pulse). No stylized or
+  non-human avatar exists to copy, so the test is: upload goblin art to Anam Lab
+  and see whether cara-4 renders it. Gabriel/table is wired as a stand-in.
+- **Session tokens expire after 3600s** (measured). The renderer now reconnects
+  on CONNECTION_CLOSED, but a longer-lived refresh path is untested.
+- **WebRTC paths are unverified.** Key auth, persona listing, and
+  mintSessionToken() are all confirmed against the live API. `talk()` and
+  `createTalkMessageStream()` need a browser session and have not been run.
 - **Mic gating is unresolved.** Anam's quickstart auto-requests the microphone
   and listens continuously. Tony uses a push-to-talk hotkey instead, but whether
   the mic can be fully disabled in the SDK is not documented in the pages read.
