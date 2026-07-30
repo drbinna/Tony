@@ -89,6 +89,18 @@ async function connect() {
   // go third. disableInputAudio keeps the mic fully off until push-to-talk.
   anam = createClient(res.token, undefined, { disableInputAudio: true });
 
+  // THE fix for silent Tony: the SDK emits the audio track but never sinks it.
+  const audioEl = document.getElementById('persona-audio');
+  anam.addListener(AnamEvent.AUDIO_STREAM_STARTED, (stream) => {
+    audioEl.srcObject = stream;
+    // autoplay of a MediaStream with audio can be blocked until a user gesture;
+    // play() may reject, so retry on the next interaction.
+    audioEl.play().catch(() => {
+      const kick = () => { audioEl.play().catch(() => {}); window.removeEventListener('pointerdown', kick); };
+      window.addEventListener('pointerdown', kick);
+    });
+  });
+
   anam.addListener(AnamEvent.SESSION_READY, () => {
     setState('observing');
     anam.muteInputAudio?.();          // belt and braces alongside disableInputAudio
@@ -122,10 +134,11 @@ async function connect() {
     setState('observing');
   });
 
-  // Stream video AND audio. streamToVideoElement alone leaves audio with no
-  // sink; combined with a muted <video> that meant Tony was inaudible and the
-  // undelivered audio stream showed up as climbing srtp unprotect failures.
-  await anam.streamToVideoAndAudioElements('persona', 'persona-audio');
+  // streamToVideoAndAudioElements is deprecated in this SDK version. Use
+  // streamToVideoElement (video) and attach the audio track ourselves from the
+  // AUDIO_STREAM_STARTED event below -- the SDK captures that track but does
+  // not play it in this mode.
+  await anam.streamToVideoElement('persona');
 }
 
 /**

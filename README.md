@@ -129,6 +129,28 @@ TALK_STREAM_INTERRUPTED, SESSION_READY, SERVER_WARNING.
 The package also exports `unsafe_createClientWithApiKey`. Do not use it — that is
 the path that puts your Anam key in the renderer.
 
+## Audio: the SDK does not play the avatar's voice for you
+
+Verified by reading `StreamingClient.onTrackEventHandler` in the installed SDK
+(@anam-ai/js-sdk 2.5.0): `streamToVideoElement` attaches the VIDEO track to your
+element, but the AUDIO track is only emitted via the `AUDIO_STREAM_STARTED`
+event and never played. You MUST attach it to an audio sink yourself:
+
+```js
+const audioEl = document.getElementById('persona-audio');
+anam.addListener(AnamEvent.AUDIO_STREAM_STARTED, (stream) => {
+  audioEl.srcObject = stream;
+  audioEl.play().catch(() => {/* retry after a user gesture */});
+});
+```
+
+`streamToVideoAndAudioElements` is deprecated in this version — do not use it.
+A muted `<video>` element also silences everything, so the video element must
+not carry the `muted` attribute.
+
+This was the cause of the silent avatar. It could only be found by reading the
+SDK source; the quickstart does not mention it.
+
 ## Known gaps
 
 - **Cache hit rate is unmeasured.** This is THE open question. At 100% Tony

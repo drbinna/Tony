@@ -146,8 +146,10 @@
 
     <div id="stage">
       <video id="persona" autoplay playsinline></video>
-      <!-- audio needs its own sink; a muted <video> silences Tony, and
-           the SDK streams audio to a separate element -->
+      <!-- The SDK's streamToVideoElement attaches the VIDEO track to the video
+           element but only EMITS the audio track via AUDIO_STREAM_STARTED --
+           it never plays it. We attach it to this sink ourselves. Verified by
+           reading StreamingClient.onTrackEventHandler in the installed SDK. -->
       <audio id="persona-audio" autoplay></audio>
       <div id="scan"></div>
     </div>
