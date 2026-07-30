@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tony</title>
+<style>
+  /* ── tokens ────────────────────────────────────────────────────────────
+     Goblin green against a near-black with a green cast. AWS orange is
+     RESERVED — it appears only when Tony has the wheel, so the one moment
+     the app can act on your console is the one moment it changes colour. */
+  :root {
+    --void:    #0B0F0E;
+    --shell:   #131A18;
+    --goblin:  #3FD07A;
+    --ember:   #FF8A3D;
+    --slate:   #7A8B85;
+    --bone:    #E8EDEA;
+
+    --ring: var(--slate);
+    --ring-w: 1px;
+    --glow: transparent;
+
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    background: transparent;
+    font-family: var(--sans);
+    color: var(--bone);
+    overflow: hidden;
+    user-select: none;
+    cursor: default;
+  }
+
+  /* the whole card is the drag handle, minus interactive controls */
+  #card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: var(--shell);
+    border: var(--ring-w) solid var(--ring);
+    border-radius: 14px;
+    box-shadow: 0 18px 48px rgba(0,0,0,.55), 0 0 0 6px var(--glow);
+    overflow: hidden;
+    -webkit-app-region: drag;
+    transition: border-color .18s ease, box-shadow .18s ease, border-width .18s ease;
+  }
+
+  /* ── state ring: the signature element ───────────────────────────────── */
+  #stage { position: relative; background: var(--void); aspect-ratio: 1 / 1; }
+  #stage video { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+  #scan {
+    position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(180deg, transparent 0%, rgba(63,208,122,.10) 50%, transparent 100%);
+    opacity: 0; transition: opacity .2s ease;
+  }
+  body[data-state="thinking"] #scan { opacity: 1; animation: sweep 1.4s linear infinite; }
+  @keyframes sweep { from { transform: translateY(-100%); } to { transform: translateY(100%); } }
+
+  /* ── status readout: an instrument, so it's set in mono ──────────────── */
+  #status {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 12px;
+    font-family: var(--mono); font-size: 10px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--slate);
+    border-top: 1px solid rgba(255,255,255,.06);
+  }
+  #dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ring); flex: none; }
+  body[data-state="observing"] #dot { animation: breathe 3s ease-in-out infinite; }
+  @keyframes breathe { 0%,100% { opacity: .35; } 50% { opacity: 1; } }
+  #detail { margin-left: auto; color: rgba(232,237,234,.4); text-transform: none; letter-spacing: 0; }
+
+  /* ── speech ──────────────────────────────────────────────────────────── */
+  #speech {
+    flex: 1; padding: 12px 14px; font-size: 13.5px; line-height: 1.45;
+    overflow-y: auto; color: var(--bone);
+  }
+  #speech:empty::after {
+    content: "⌘⇧Space to ask"; color: rgba(232,237,234,.28); font-size: 12px;
+  }
+  #speech .bridge { color: var(--slate); font-style: italic; }
+
+  /* ── controls ────────────────────────────────────────────────────────── */
+  #controls {
+    display: flex; gap: 6px; padding: 8px 10px 10px;
+    border-top: 1px solid rgba(255,255,255,.06);
+    -webkit-app-region: no-drag;
+  }
+  button {
+    flex: 1; padding: 6px 4px; font-family: var(--mono); font-size: 9.5px;
+    letter-spacing: .06em; text-transform: uppercase;
+    background: transparent; color: var(--slate);
+    border: 1px solid rgba(255,255,255,.10); border-radius: 7px; cursor: pointer;
+    transition: color .15s, border-color .15s;
+  }
+  button:hover { color: var(--bone); border-color: rgba(255,255,255,.24); }
+  button[aria-pressed="true"] { color: var(--void); background: var(--goblin); border-color: var(--goblin); }
+  button:focus-visible { outline: 2px solid var(--goblin); outline-offset: 2px; }
+
+  /* ── driving: the one loud moment ────────────────────────────────────── */
+  body[data-state="driving"] {
+    --ring: var(--ember); --ring-w: 2px; --glow: rgba(255,138,61,.16);
+  }
+  #wheel {
+    display: none;
+    padding: 7px 12px; background: var(--ember); color: #1A0D00;
+    font-family: var(--mono); font-size: 10px; font-weight: 700;
+    letter-spacing: .1em; text-transform: uppercase; text-align: center;
+  }
+  body[data-state="driving"] #wheel { display: block; }
+
+  body[data-state="observing"] { --ring: rgba(63,208,122,.45); }
+  body[data-state="speaking"]  { --ring: var(--goblin); --glow: rgba(63,208,122,.10); }
+  body[data-state="idle"]      { --ring: rgba(255,255,255,.08); }
+
+  /* ── blocking notice ─────────────────────────────────────────────────── */
+  #notice {
+    display: none; padding: 12px 14px; background: rgba(255,138,61,.10);
+    border-top: 1px solid rgba(255,138,61,.3); font-size: 12px; line-height: 1.4;
+    -webkit-app-region: no-drag;
+  }
+  #notice.show { display: block; }
+  #notice a { color: var(--ember); cursor: pointer; text-decoration: underline; }
+
+  @media (prefers-reduced-motion: reduce) {
+    #scan, #dot { animation: none !important; }
+    #card { transition: none; }
+  }
+</style>
+</head>
+<body data-state="idle">
+  <div id="card">
+    <div id="wheel">Tony has the wheel — press any key to stop</div>
+
+    <div id="stage">
+      <video id="persona" autoplay playsinline muted></video>
+      <div id="scan"></div>
+    </div>
+
+    <div id="status">
+      <span id="dot"></span>
+      <span id="label">Dormant</span>
+      <span id="detail"></span>
+    </div>
+
+    <div id="speech"></div>
+
+    <div id="notice"></div>
+
+    <div id="controls">
+      <button data-mode="just_fix_it">Fix it</button>
+      <button data-mode="walk_through" aria-pressed="true">Walk me</button>
+      <button data-mode="earn_it">Earn it</button>
+    </div>
+  </div>
+
+  <script type="module" src="./renderer.js"></script>
+</body>
+</html>

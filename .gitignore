@@ -1,0 +1,20 @@
+# Secrets — never commit. .env.example is the template that ships.
+.env
+.env.local
+.env.*.local
+
+# Compiled AX helper (built per-machine by observer/build.sh)
+observer/ax-dump
+observer/*.dSYM
+
+# Node
+node_modules/
+npm-debug.log*
+package-lock.json
+
+# Electron build output
+dist/
+out/
+
+# macOS
+.DS_Store
