@@ -107,7 +107,11 @@ async function connect() {
   anam.addListener(AnamEvent.CONNECTION_CLOSED, () => {
     setState('idle');
     clearTimeout(reconnectTimer);
-    reconnectTimer = setTimeout(() => connect().catch(() => {}), 2000);
+    reconnectTimer = setTimeout(() => {
+      try { anam?.stopStreaming?.(); } catch { /* already down */ }
+      anam = null;
+      connect().catch(() => {});
+    }, 2000);
   });
 
   // Learner talking over Tony is the same signal as the deadman switch:
@@ -118,7 +122,10 @@ async function connect() {
     setState('observing');
   });
 
-  await anam.streamToVideoElement('persona');
+  // Stream video AND audio. streamToVideoElement alone leaves audio with no
+  // sink; combined with a muted <video> that meant Tony was inaudible and the
+  // undelivered audio stream showed up as climbing srtp unprotect failures.
+  await anam.streamToVideoAndAudioElements('persona', 'persona-audio');
 }
 
 /**

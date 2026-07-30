@@ -145,7 +145,10 @@
     <div id="wheel">Tony has the wheel — press any key to stop</div>
 
     <div id="stage">
-      <video id="persona" autoplay playsinline muted></video>
+      <video id="persona" autoplay playsinline></video>
+      <!-- audio needs its own sink; a muted <video> silences Tony, and
+           the SDK streams audio to a separate element -->
+      <audio id="persona-audio" autoplay></audio>
       <div id="scan"></div>
     </div>
 
