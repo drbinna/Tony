@@ -142,13 +142,19 @@ app.whenReady().then(async () => {
 
   // Push-to-talk. Always-on mic while someone works for hours is both a privacy
   // problem and a cost one, so the hotkey is the primary input.
-  globalShortcut.register('CommandOrControl+Shift+Space', async () => {
+  // ⌘⇧Space collides with Spotlight; ^⌥Space is unclaimed on default macOS.
+  // registerOk reports whether the OS actually granted the shortcut so a future
+  // collision surfaces instead of failing silently.
+  const ASK_HOTKEY = process.env.TONY_ASK_HOTKEY || 'Control+Alt+Space';
+  const askOk = globalShortcut.register(ASK_HOTKEY, async () => {
     const frame = observer.latest;
     if (!frame || !frame.screen.aws) return;
     send('state', { state: 'thinking' });
     const res = await brain.ask({ frame, question: 'what am I looking at' });
     dispatchSpeech(res);
   });
+  if (!askOk) console.error(`[hotkey] failed to register ${ASK_HOTKEY} — already taken?`);
+  send('hotkey', { ask: ASK_HOTKEY });
 });
 
 /**

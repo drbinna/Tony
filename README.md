@@ -59,7 +59,9 @@ cp .env.example .env
 npm start          # builds the AX helper + renderer bundle, then launches
 ```
 
-Hotkeys: **Cmd+Shift+Space** ask · **Cmd+Shift+D** devtools · **Cmd+Shift+Q** quit.
+Hotkeys: **Ctrl+Opt+Space** ask · **Cmd+Shift+D** devtools · **Cmd+Shift+Q** quit.
+(Cmd+Shift+Space was dropped — it collides with Spotlight. Override the ask
+chord with `TONY_ASK_HOTKEY` in `.env`, e.g. `TONY_ASK_HOTKEY=Control+Alt+T`.)
 (The window is frameless with no dock icon, so Cmd+Shift+Q is the only way out.)
 
 ### The renderer must be bundled

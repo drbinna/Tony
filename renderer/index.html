@@ -88,8 +88,9 @@
     overflow-y: auto; color: var(--bone);
   }
   #speech:empty::after {
-    content: "⌘⇧Space to ask"; color: rgba(232,237,234,.28); font-size: 12px;
+    content: "^⌥Space to ask"; color: rgba(232,237,234,.28); font-size: 12px;
   }
+  body[data-ask-key] #speech:empty::after { content: attr(data-ask-key) " to ask"; }
   #speech .bridge { color: var(--slate); font-style: italic; }
 
   /* ── controls ────────────────────────────────────────────────────────── */

@@ -187,6 +187,14 @@ window.tony.on('speak-followup', ({ text }) => speakFollowUp(text));
 
 window.tony.on('state', ({ state }) => setState(state));
 
+window.tony.on('hotkey', ({ ask }) => {
+  // Render the real chord in the prompt; CSS ::after can't be set from JS, so
+  // we drive a data attribute the stylesheet reads.
+  document.body.dataset.askKey = ask
+    .replace('Control', '^').replace('Alt', '⌥').replace('Command', '⌘')
+    .replace('Shift', '⇧').replace('CommandOrControl', '⌘').replace(/\+/g, '');
+});
+
 window.tony.on('screen', (screen) => {
   els.detail.textContent = screen.aws ? `${screen.service}/${screen.page}` : 'off-console';
 });
