@@ -132,7 +132,9 @@ app.whenReady().then(async () => {
 
   // Off-console: Tony goes quiet. Persona rule, and it halves the capture surface.
   observer.on('left-console', () => {
-    send('state', { state: 'idle' });
+    // 'paused' not 'idle': the session is alive, Tony just followed you off
+    // the console. 'Dormant' next to a streaming avatar read as broken.
+    send('state', { state: 'paused' });
   });
 
   observer.on('observer-error', (e) => send('observer-error', e));

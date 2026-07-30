@@ -17,8 +17,17 @@ let anam = null;
 let activeStream = null;   // in-flight createTalkMessageStream, if any
 let reconnectTimer = null;
 
+// Single source of truth for the mic. We create the client with
+// disableInputAudio: true, and in that mode the SDK logs "Audio state will not
+// be used" and getInputAudioState() returns an isMuted value it explicitly
+// disavows -- trusting it painted MIC LIVE while the mic was actually off.
+// A consent readout that false-alarms trains people to ignore it. This flag
+// flips only if we ever deliberately enable input audio (push-to-talk, later).
+let inputAudioEnabled = false;
+
 const LABELS = {
   idle: 'Dormant — not watching',
+  paused: 'Paused — off console',
   observing: 'Watching',
   thinking: 'Thinking',
   speaking: 'Speaking',
@@ -47,12 +56,15 @@ function say(text, { bridge = false, append = false } = {}) {
 }
 
 /** Mic state is part of the consent UI, not a detail. If the card says the mic
- *  is off, it has to actually be off. */
+ *  is off, it has to actually be off -- and vice versa. */
 function reportMic() {
-  const st = anam?.getInputAudioState?.();
-  const muted = st ? st.isMuted : true;
-  els.mic.textContent = muted ? 'mic off' : 'MIC LIVE';
-  els.mic.dataset.live = String(!muted);
+  let live = false;
+  if (inputAudioEnabled) {
+    const st = anam?.getInputAudioState?.();
+    live = st ? !st.isMuted : true;   // if enabled and unknown, assume LIVE
+  }
+  els.mic.textContent = live ? 'MIC LIVE' : 'mic off';
+  els.mic.dataset.live = String(live);
 }
 
 function notice(html) {
