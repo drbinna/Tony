@@ -178,7 +178,19 @@ function dispatchSpeech(res, opts = {}) {
   const action = res.action && brain.sanitizeAction(res.action);
   if (action && action.type === 'point' && frame) {
     const p = brain.resolvePoint(action, frame);
-    if (p) pointer.point(p);
+    if (p) {
+      console.log(`[pointer] ring -> ${action.element_id} @ [${p.bounds}] "${p.label}"`);
+      pointer.point(p);
+    } else {
+      // The brain named an element that is not in the current tree. This is the
+      // most likely real-console failure: element ids are per-capture, so a
+      // point can name an id that has already changed. Log it loudly.
+      const ids = (frame.tree || []).map((n) => n.id).slice(0, 8).join(',');
+      console.warn(`[pointer] NO RING: element ${action.element_id} not in tree `
+        + `(${frame.tree ? frame.tree.length : 0} nodes: ${ids}...)`);
+    }
+  } else if (action) {
+    console.log(`[pointer] action was ${action.type}, not point — no ring`);
   }
 
   if (res.followUp) {
