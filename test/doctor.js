@@ -12,8 +12,25 @@ const ok = (m) => console.log(`  \x1b[32mok\x1b[0m    ${m}`);
 const bad = (m) => console.log(`  \x1b[31mFAIL\x1b[0m  ${m}`);
 const warn = (m) => console.log(`  \x1b[33mwarn\x1b[0m  ${m}`);
 
+// Doctor reads the FRONTMOST window. Run from Terminal and Terminal is always
+// frontmost, which makes section 3 useless. Count down so the operator can
+// focus the browser first.
+const WAIT = process.argv.includes('--now') ? 0
+  : Number((process.argv.find((a) => a.startsWith('--wait=')) || '--wait=6').split('=')[1]);
+
 console.log('\nTONY DOCTOR\n' + '='.repeat(60));
 
+async function countdown(sec) {
+  if (!sec) return;
+  console.log(`\nSwitch to Chrome with the AWS console open. Reading in ${sec}s...`);
+  for (let i = sec; i > 0; i -= 1) {
+    process.stdout.write(`\r  ${i}... `);
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  process.stdout.write('\r  reading now.   \n');
+}
+
+async function main() {
 // 1. env
 console.log('\n1. environment');
 const fw = process.env.FIREWORKS_API_KEY || '';
@@ -24,6 +41,8 @@ an.length > 20 ? ok(`ANAM_API_KEY present (${an.length} chars)`)
   : bad('ANAM_API_KEY missing — avatar will stay black');
 process.env.ANAM_AVATAR_ID ? ok(`avatar ${process.env.ANAM_AVATAR_ID}`) : warn('ANAM_AVATAR_ID unset');
 process.env.ANAM_VOICE_ID ? ok(`voice  ${process.env.ANAM_VOICE_ID}`) : warn('ANAM_VOICE_ID unset');
+
+await countdown(WAIT);
 
 // 2. observer
 console.log('\n2. observer (ax-dump)');
@@ -66,7 +85,6 @@ if (payload && !payload.error) {
 
 // 4. anam
 console.log('\n4. anam');
-(async () => {
   if (!an) { bad('skipped — no key'); return finish(); }
   try {
     const r = await fetch('https://api.anam.ai/v1/auth/session-token', {
@@ -89,10 +107,12 @@ console.log('\n4. anam');
     bad(`network: ${e.message}`);
   }
   finish();
-})();
+}
+
+main().catch((e) => console.error(e));
 
 function finish() {
   console.log('\n' + '='.repeat(60));
-  console.log('Any FAIL above explains the symptom. Run from the Tony directory,');
-  console.log('with the AWS console focused in Chrome for a useful reading.\n');
+  console.log('Any FAIL above explains the symptom.');
+  console.log('Use --now to skip the countdown, --wait=N to change it.\n');
 }
