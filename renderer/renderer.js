@@ -81,13 +81,11 @@ async function connect() {
     return;
   }
 
-  // createClient(sessionToken, personaConfig?, options?) — THREE positional
-  // args. Passing an options object second lands it in the personaConfig slot,
-  // and since our token already carries the persona (minted server-side with
-  // CUSTOMER_CLIENT_V1), Anam rejects the session: "This session token already
-  // contains a persona configuration." Persona slot stays undefined; options
-  // go third. disableInputAudio keeps the mic fully off until push-to-talk.
-  anam = createClient(res.token, undefined, { disableInputAudio: true });
+  // Voice conversation: the mic is ON so Anam can transcribe the learner.
+  // createClient(sessionToken, personaConfig?, options?) — persona slot stays
+  // undefined because our token already carries it (CUSTOMER_CLIENT_V1).
+  anam = createClient(res.token);
+  inputAudioEnabled = true;
 
   // THE fix for silent Tony: the SDK emits the audio track but never sinks it.
   const audioEl = document.getElementById('persona-audio');
@@ -103,7 +101,6 @@ async function connect() {
 
   anam.addListener(AnamEvent.SESSION_READY, () => {
     setState('observing');
-    anam.muteInputAudio?.();          // belt and braces alongside disableInputAudio
     reportMic();
   });
 
@@ -132,6 +129,23 @@ async function connect() {
     activeStream = null;
     window.tony.learnerInput();
     setState('observing');
+  });
+
+  // THE conversation loop. Anam transcribes the learner's speech and streams it
+  // as USER messages. On endOfSpeech we have a complete utterance -> hand it to
+  // our brain (which holds the console context + persona) and speak the answer.
+  // Anam does STT; our brain does the thinking; Anam does TTS. Tony hears you,
+  // and the thing that answers is the same brain watching your screen.
+  let partialUser = '';
+  anam.addListener(AnamEvent.MESSAGE_STREAM_EVENT_RECEIVED, (evt) => {
+    if (evt.role !== 'user') return;           // ignore Tony's own transcript
+    partialUser = evt.content;
+    if (evt.endOfSpeech && partialUser.trim()) {
+      const heard = partialUser.trim();
+      partialUser = '';
+      setState('thinking');
+      window.tony.heard(heard);                // -> main -> brain.ask(...)
+    }
   });
 
   // streamToVideoAndAudioElements is deprecated in this SDK version. Use

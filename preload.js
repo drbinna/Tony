@@ -24,5 +24,6 @@ contextBridge.exposeInMainWorld('tony', {
   setAccountKind: (kind) => ipcRenderer.invoke('set-account-kind', kind),
   cacheReport: () => ipcRenderer.invoke('cache-report'),
   learnerInput: () => ipcRenderer.send('learner-input'),
+  heard: (text) => ipcRenderer.send('heard', text),
   openAccessibilitySettings: () => ipcRenderer.send('open-accessibility-settings'),
 });

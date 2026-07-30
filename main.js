@@ -198,6 +198,22 @@ ipcMain.handle('cache-report', () => brain.cache.report());
 
 ipcMain.on('learner-input', () => abortDriving('learner input'));
 
+// The learner spoke. Answer as Tony, with whatever console screen is current.
+// This is the spoken counterpart of the hotkey path: same brain, same context,
+// input arrives as transcribed voice instead of a keypress.
+ipcMain.on('heard', async (_e, text) => {
+  const frame = observer.latest;
+  if (!frame) return;
+  // Off-console questions still deserve an answer; the brain handles the
+  // 'not AWS' case by talking generally rather than teaching a screen.
+  const res = await brain.ask({
+    frame,
+    question: text,
+    intent: 'learner_question',
+  });
+  dispatchSpeech(res);
+});
+
 ipcMain.on('open-accessibility-settings', () => {
   shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility');
 });

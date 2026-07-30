@@ -9,6 +9,21 @@ Every architectural choice below traces to a measurement in
 
 ---
 
+## Voice conversation (mic on)
+
+Tony hears you and answers as himself, with the console in view:
+
+1. Anam transcribes your speech and streams it as USER messages
+   (MESSAGE_STREAM_EVENT_RECEIVED, with endOfSpeech marking a finished utterance)
+2. on endOfSpeech, the renderer hands the transcript to main -> brain.ask
+3. the brain answers with the SLOW model, given the current screen as context,
+   in Tony's persona
+4. the answer is spoken back through Gabriel via talk()
+
+Anam does STT and TTS; OUR brain does the thinking. That is the only wiring
+where "watches the console AND hears me AND answers as Tony" is all true at
+once. The mic is live while a session is open — the status bar shows MIC LIVE.
+
 ## The one idea
 
 **No model call is ever on the critical path.**

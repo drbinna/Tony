@@ -150,15 +150,36 @@ class Brain {
       return { via: 'cache', speak: hit.text, action: hit.action, latencyClass: 'floor' };
     }
 
-    // Miss. Speak a deterministic bridge NOW; resolve substance behind it.
+    // A real spoken question deserves the slow brain's reasoning, not just the
+    // fast describe-the-screen model. Bridge immediately, answer for real behind
+    // it. The bridge buys the 5-20s the slow brain needs.
+    const isSpokenQuestion = intent === 'learner_question';
     const bridge = pickBridge(this.session.id, frame.screen.key);
-    const followUp = this.speakFast(frame, question)
-      .catch((err) => {
-        this.log.warn?.('fast path failed:', err.message);
-        return null;   // bridge already spoke; silence beats an apology
-      });
+    const answerer = isSpokenQuestion
+      ? this.answerQuestion(frame, question)
+      : this.speakFast(frame, question);
+
+    const followUp = answerer.catch((err) => {
+      this.log.warn?.('answer path failed:', err.message);
+      return null;   // bridge already spoke; silence beats an apology
+    });
 
     return { via: 'bridge', speak: bridge, followUp, latencyClass: 'floor' };
+  }
+
+  /** Answer a free-form spoken question as Tony, with console context. Uses the
+   *  slow brain (better reasoning) and returns just the spoken line. */
+  async answerQuestion(frame, question) {
+    const user = buildSuffix({
+      session: this.session,
+      event: { kind: 'learner_message', payload: question },
+      screen: frame,
+    });
+    const raw = await this.callModel({
+      model: SLOW_MODEL, system: SLOW_SYS, user, maxTokens: 8000,
+    });
+    const obj = Brain.parseJson(raw);
+    return obj?.say || null;
   }
 
   // --------------------------------------------------------- session state
