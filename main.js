@@ -5,6 +5,7 @@ const { app, BrowserWindow, ipcMain, screen, globalShortcut, systemPreferences, 
 const path = require('path');
 const { Observer } = require('./observer/observer');
 const { Brain } = require('./brain/server');
+const { Pointer } = require('./pointer/pointer');
 
 const WIDTH = 320;
 const HEIGHT = 440;
@@ -12,6 +13,7 @@ const HEIGHT = 440;
 let win = null;
 let observer = null;
 let brain = null;
+let pointer = null;
 
 // ---------------------------------------------------------------- window
 
@@ -79,6 +81,7 @@ async function checkPermissions() {
 let driving = false;
 
 function abortDriving(reason) {
+  pointer?.clear();                  // learner acted: drop the ring immediately
   if (!driving) return;
   driving = false;
   send('state', { state: 'observing' });
@@ -104,6 +107,7 @@ app.whenReady().then(async () => {
     },
   });
 
+  pointer = new Pointer();
   observer = new Observer({ intervalMs: Number(process.env.TICK_MS) || 1500 });
 
   // Screen change is the strongest precompute signal: the learner just landed
@@ -111,6 +115,7 @@ app.whenReady().then(async () => {
   observer.on('screen-changed', (frame) => {
     send('screen', frame.screen);
     send('state', { state: 'observing' });
+    pointer.clear();                 // new screen: any prior ring is stale
     brain.warm(frame);
   });
 
@@ -164,6 +169,17 @@ app.whenReady().then(async () => {
  */
 function dispatchSpeech(res, opts = {}) {
   send('speak', { text: res.speak, via: res.via, proactive: !!opts.proactive });
+
+  // A point action rides alongside speech: Tony says "click this" and the ring
+  // appears on the element he means. Anything mutating was already demoted to a
+  // point by sanitizeAction on non-sandbox accounts, so the overlay is the only
+  // actuation that ever reaches the screen in scope A.
+  const frame = observer.latest;
+  const action = res.action && brain.sanitizeAction(res.action);
+  if (action && action.type === 'point' && frame) {
+    const p = brain.resolvePoint(action, frame);
+    if (p) pointer.point(p);
+  }
 
   if (res.followUp) {
     res.followUp.then((text) => {

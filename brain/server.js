@@ -201,10 +201,33 @@ class Brain {
   sanitizeAction(action) {
     if (!action) return { type: 'none' };
     const mutating = ['click', 'type', 'scroll', 'hotkey'];
+    // On a non-sandbox account, any mutating action is DEMOTED to a point:
+    // Tony shows you where instead of doing it. This is the safety line, and it
+    // is enforced here in code, not left to the prompt.
     if (mutating.includes(action.type) && !this.permitsDriving()) {
-      return { type: 'point', element_id: action.element_id, needs_confirmation: true };
+      return { type: 'point', element_id: action.element_id, needs_confirmation: true, demoted_from: action.type };
     }
     return action;
+  }
+
+  /**
+   * Attach screen bounds to a point action by looking the element up in the
+   * frame's AX tree. ax-dump already emits per-node bounds in screen coords, so
+   * this is a lookup, not a computation — and it means the ring lands exactly
+   * on the element the brain chose, with no pixel guessing.
+   */
+  resolvePoint(action, frame) {
+    if (!action || action.type !== 'point' || !action.element_id) return null;
+    const el = (frame.tree || []).find((n) => n.id === action.element_id);
+    if (!el || !Array.isArray(el.bounds) || el.bounds.length !== 4) return null;
+    return {
+      bounds: el.bounds,
+      label: action.label || (() => {
+        const text = (el.label || el.value || '').trim();
+        return text ? `click ${text}`.slice(0, 40) : 'here';
+      })(),
+      element_id: action.element_id,
+    };
   }
 }
 

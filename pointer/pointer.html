@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>Tony pointer</title>
+<style>
+  /* Same palette as the main card: goblin green points, AWS orange is reserved
+     for driving (scope B), never used here. The ring is the whole UI. */
+  :root {
+    --goblin: #3FD07A;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; pointer-events: none; }
+
+  #ring {
+    position: absolute; display: none;
+    border: 2.5px solid var(--goblin);
+    border-radius: 8px;
+    box-shadow: 0 0 0 4px rgba(63,208,122,.18), 0 0 22px rgba(63,208,122,.45);
+    /* animate position so the ring glides to the next target rather than
+       teleporting — the movement itself is a pointing gesture */
+    transition: left .28s cubic-bezier(.4,0,.2,1), top .28s cubic-bezier(.4,0,.2,1),
+                width .28s cubic-bezier(.4,0,.2,1), height .28s cubic-bezier(.4,0,.2,1);
+  }
+  #ring.show { display: block; animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 4px rgba(63,208,122,.18), 0 0 22px rgba(63,208,122,.40); }
+    50%      { box-shadow: 0 0 0 7px rgba(63,208,122,.10), 0 0 30px rgba(63,208,122,.65); }
+  }
+
+  /* a small label tag anchored to the ring: "click this" in Tony's voice */
+  #tag {
+    position: absolute; display: none;
+    padding: 4px 9px; background: var(--goblin); color: #08110C;
+    font-family: var(--mono); font-size: 11px; font-weight: 600;
+    letter-spacing: .03em; border-radius: 6px; white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0,0,0,.4);
+  }
+  #tag.show { display: block; }
+
+  @media (prefers-reduced-motion: reduce) {
+    #ring { transition: none; }
+    #ring.show { animation: none; }
+  }
+</style>
+</head>
+<body>
+  <div id="ring"></div>
+  <div id="tag"></div>
+  <script src="./pointer-renderer.js"></script>
+</body>
+</html>

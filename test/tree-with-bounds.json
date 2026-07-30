@@ -1,0 +1,254 @@
+[
+ {
+  "id": "e0",
+  "role": "text",
+  "label": "",
+  "value": "EC2",
+  "bounds": [
+   220,
+   140,
+   81,
+   20
+  ]
+ },
+ {
+  "id": "e1",
+  "role": "text",
+  "label": "",
+  "value": "Instances",
+  "bounds": [
+   220,
+   174,
+   123,
+   20
+  ]
+ },
+ {
+  "id": "e2",
+  "role": "text",
+  "label": "",
+  "value": "Security Groups",
+  "bounds": [
+   220,
+   208,
+   165,
+   20
+  ]
+ },
+ {
+  "id": "e3",
+  "role": "text",
+  "label": "",
+  "value": "us-west-2 (Oregon)",
+  "bounds": [
+   220,
+   242,
+   186,
+   20
+  ]
+ },
+ {
+  "id": "e4",
+  "role": "text",
+  "label": "",
+  "value": "Launch an instance",
+  "bounds": [
+   220,
+   276,
+   186,
+   20
+  ]
+ },
+ {
+  "id": "e5",
+  "role": "text",
+  "label": "",
+  "value": "Name and tags",
+  "bounds": [
+   220,
+   310,
+   151,
+   20
+  ]
+ },
+ {
+  "id": "e6",
+  "role": "textfield",
+  "label": "Name",
+  "value": "web-server-01",
+  "bounds": [
+   220,
+   344,
+   280,
+   36
+  ]
+ },
+ {
+  "id": "e7",
+  "role": "text",
+  "label": "",
+  "value": "Network settings — Firewall (security groups)",
+  "bounds": [
+   220,
+   394,
+   375,
+   20
+  ]
+ },
+ {
+  "id": "e8",
+  "role": "textfield",
+  "label": "Security group name",
+  "value": "launch-wizard-1",
+  "bounds": [
+   220,
+   428,
+   280,
+   36
+  ]
+ },
+ {
+  "id": "e9",
+  "role": "text",
+  "label": "",
+  "value": "Type\nSSH\nHTTP\nHTTPS\nCustom TCP\nPort range\nSource type\nAnywhere\nMy IP\nCustom\nSource\nRemove",
+  "bounds": [
+   220,
+   478,
+   400,
+   20
+  ]
+ },
+ {
+  "id": "e10",
+  "role": "combobox",
+  "label": "Type",
+  "value": "SSH",
+  "bounds": [
+   220,
+   512,
+   280,
+   36
+  ]
+ },
+ {
+  "id": "e11",
+  "role": "textfield",
+  "label": "Port range",
+  "value": "22",
+  "bounds": [
+   220,
+   562,
+   280,
+   36
+  ]
+ },
+ {
+  "id": "e12",
+  "role": "combobox",
+  "label": "Source type",
+  "value": "Anywhere",
+  "bounds": [
+   220,
+   612,
+   280,
+   36
+  ]
+ },
+ {
+  "id": "e13",
+  "role": "textfield",
+  "label": "Source",
+  "value": "0.0.0.0/0",
+  "bounds": [
+   220,
+   662,
+   280,
+   36
+  ]
+ },
+ {
+  "id": "e14",
+  "role": "button",
+  "label": "",
+  "value": "Remove",
+  "bounds": [
+   220,
+   712,
+   120,
+   32
+  ]
+ },
+ {
+  "id": "e15",
+  "role": "text",
+  "label": "",
+  "value": "⚠ Rules with source of 0.0.0.0/0 allow all IP addresses to access your instance. We recommend setting security group rul",
+  "bounds": [
+   220,
+   758,
+   400,
+   20
+  ]
+ },
+ {
+  "id": "e16",
+  "role": "button",
+  "label": "",
+  "value": "Add security group rule",
+  "bounds": [
+   220,
+   792,
+   120,
+   32
+  ]
+ },
+ {
+  "id": "e17",
+  "role": "text",
+  "label": "",
+  "value": "Summary",
+  "bounds": [
+   220,
+   838,
+   109,
+   20
+  ]
+ },
+ {
+  "id": "e18",
+  "role": "text",
+  "label": "",
+  "value": "Number of instances: 1 · t3.micro · web-server-01 · vpc-0a1b2c3d",
+  "bounds": [
+   220,
+   872,
+   400,
+   20
+  ]
+ },
+ {
+  "id": "e19",
+  "role": "button",
+  "label": "",
+  "value": "Cancel",
+  "bounds": [
+   220,
+   906,
+   120,
+   32
+  ]
+ },
+ {
+  "id": "e20",
+  "role": "button",
+  "label": "",
+  "value": "Launch instance",
+  "bounds": [
+   220,
+   952,
+   120,
+   32
+  ]
+ }
+]
