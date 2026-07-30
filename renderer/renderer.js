@@ -69,10 +69,13 @@ async function connect() {
     return;
   }
 
-  // disableInputAudio keeps the microphone off entirely until the learner
-  // presses the hotkey. Tony sits open for hours; always-on capture beside a
-  // console is both a privacy problem and a cost one.
-  anam = createClient(res.token, { disableInputAudio: true });
+  // createClient(sessionToken, personaConfig?, options?) — THREE positional
+  // args. Passing an options object second lands it in the personaConfig slot,
+  // and since our token already carries the persona (minted server-side with
+  // CUSTOMER_CLIENT_V1), Anam rejects the session: "This session token already
+  // contains a persona configuration." Persona slot stays undefined; options
+  // go third. disableInputAudio keeps the mic fully off until push-to-talk.
+  anam = createClient(res.token, undefined, { disableInputAudio: true });
 
   anam.addListener(AnamEvent.SESSION_READY, () => {
     setState('observing');
