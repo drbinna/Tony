@@ -18,46 +18,53 @@ const HELPER = path.join(__dirname, 'ax-dump');
 
 /** Screen identity from window title + tree shape. Drives bridge selection and
  *  precompute targeting, so it must be cheap and stable — no model involved. */
-function identifyScreen({ frontmost_app, window_title, a11y_tree }) {
+function identifyScreen({ frontmost_app, window_title, document_url, a11y_tree }) {
   const title = (window_title || '').toLowerCase();
+  const url = (document_url || '').toLowerCase();
   const blob = a11y_tree.map((n) => `${n.label} ${n.value}`).join(' ').toLowerCase();
 
   const isBrowser = /chrome|safari|firefox|arc|edge/i.test(frontmost_app || '');
 
-  // Detection must NOT depend on the literal string "AWS": real console titles
-  // often omit it entirely ("Launch an instance | EC2 | us-west-2"). Getting
-  // this wrong fails silently — Tony just goes dormant on the exact screens he
-  // exists for — so we accept several independent signals.
+  // URL is the reliable signal. Title sniffing was the original approach and it
+  // failed on the real console: "Console Home" contains neither "AWS" nor a
+  // service name, so Tony sat DORMANT on the console's own landing page.
+  // Titles vary per service and per page; the hostname does not.
+  const isConsoleUrl = /(^|\/\/)([a-z0-9-]+\.)?console\.aws\.amazon\.com/.test(url);
+
   const SERVICE_TOKEN = /\b(ec2|s3|iam|vpc|rds|lambda|cloudfront|route\s?53|cloudwatch|dynamodb|eks|ecs)\b/;
   const REGION = /\b(us|eu|ap|sa|ca|me|af)-(east|west|north|south|central|northeast|southeast|northwest|southwest)-\d\b/;
 
-  // A bare "aws" substring is too loose: "Terraform Registry - aws_instance"
-  // is a docs tab, not the console, and precomputing for it wastes slow-brain
-  // calls that cost 5-21s each.
-  const isAws = isBrowser && (
-    /aws management console|amazon web services console/.test(title) ||
-    /console\.aws/.test(blob) ||
-    (SERVICE_TOKEN.test(title) && REGION.test(`${title} ${blob}`)) ||
-    (SERVICE_TOKEN.test(title) && /security group|instance type|bucket|policy document/.test(blob))
-  );
+  // Title fallback for browsers that do not expose AXDocument/AXURL. Kept
+  // deliberately narrow so a docs tab like "Terraform Registry - aws_instance"
+  // does not trip it.
+  const titleLooksLikeConsole =
+    /aws management console|console home/.test(title) ||
+    (SERVICE_TOKEN.test(title) && REGION.test(`${title} ${blob}`));
+
+  const isAws = isBrowser && (isConsoleUrl || (!url && titleLooksLikeConsole));
 
   if (!isAws) {
     return { app: frontmost_app, aws: false, service: null, page: null, key: `off:${frontmost_app}` };
   }
 
+  // Service comes from the URL path when available: console.aws.amazon.com/ec2/…
+  const urlService = url.match(/console\.aws\.amazon\.com\/([a-z0-9-]+)/)?.[1];
   const service =
+    urlService && urlService !== 'console' ? urlService.replace(/^route53$/, 'route53') :
     /\bec2\b/.test(title) || /launch an instance/.test(title) ? 'ec2' :
     /\bs3\b/.test(title) ? 's3' :
     /\biam\b/.test(title) ? 'iam' :
     /vpc/.test(title) ? 'vpc' :
     /cloudfront/.test(title) ? 'cloudfront' :
-    /route\s?53/.test(title) ? 'route53' : 'unknown';
+    /route\s?53/.test(title) ? 'route53' :
+    /console home/.test(title) || /\/console\/home/.test(url) ? 'home' : 'unknown';
 
   const page =
-    /launch an instance/.test(title) ? 'launch_wizard' :
-    /security group/.test(blob) ? 'security_groups' :
+    /launch an instance/.test(title) || /#launchinstance/i.test(url) ? 'launch_wizard' :
+    /security group/.test(blob) || /#securitygroup/i.test(url) ? 'security_groups' :
     /create bucket/.test(title) ? 'create_bucket' :
-    /policy/.test(blob) && service === 'iam' ? 'policy_editor' : 'listing';
+    /policy/.test(blob) && service === 'iam' ? 'policy_editor' :
+    service === 'home' ? 'home' : 'listing';
 
   return { app: frontmost_app, aws: true, service, page, key: `${service}:${page}` };
 }
@@ -175,6 +182,7 @@ class Observer extends EventEmitter {
         signals,
         tree: payload.a11y_tree,
         windowTitle: payload.window_title,
+        documentUrl: payload.document_url || '',
         truncated: payload.truncated,
         at: Date.now(),
       };

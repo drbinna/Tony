@@ -7,7 +7,8 @@
   "scripts": {
     "build:observer": "bash observer/build.sh",
     "start": "npm run build:observer && electron .",
-    "start:nobuild": "electron ."
+    "start:nobuild": "electron .",
+    "doctor": "node test/doctor.js"
   },
   "dependencies": {
     "@anam-ai/js-sdk": "^2.0.0",

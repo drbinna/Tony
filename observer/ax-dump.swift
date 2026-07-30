@@ -112,10 +112,32 @@ guard let app = NSWorkspace.shared.frontmostApplication else {
 
 let axApp = AXUIElementCreateApplication(app.processIdentifier)
 var windowTitle = ""
+var documentURL = ""
+
+/// Browsers expose the live URL via AXDocument on the window, and AXURL on the
+/// web area. This is FAR more reliable than sniffing window titles: AWS console
+/// titles vary per service and per page ("Console Home", "Launch an instance |
+/// EC2 | us-west-2") and none of them reliably contain the word "AWS".
+func findURL(_ el: AXUIElement, depth: Int) -> String {
+    if depth > 6 { return "" }
+    if let doc = attr(el, kAXDocumentAttribute as String) as? String, !doc.isEmpty { return doc }
+    if let u = attr(el, "AXURL") {
+        if let url = u as? URL { return url.absoluteString }
+        if let s = u as? String, !s.isEmpty { return s }
+    }
+    if let kids = attr(el, kAXChildrenAttribute as String) as? [AXUIElement] {
+        for k in kids {
+            let found = findURL(k, depth: depth + 1)
+            if !found.isEmpty { return found }
+        }
+    }
+    return ""
+}
 
 if let win = attr(axApp, kAXFocusedWindowAttribute as String) {
     let w = win as! AXUIElement
     windowTitle = str(w, kAXTitleAttribute as String)
+    documentURL = findURL(w, depth: 0)
     walk(w, depth: 0)
 } else {
     walk(axApp, depth: 0)
@@ -124,6 +146,7 @@ if let win = attr(axApp, kAXFocusedWindowAttribute as String) {
 struct Payload: Encodable {
     let frontmost_app: String
     let window_title: String
+    let document_url: String
     let captured_at: Double
     let truncated: Bool
     let a11y_tree: [Node]
@@ -132,6 +155,7 @@ struct Payload: Encodable {
 let payload = Payload(
     frontmost_app: app.localizedName ?? "unknown",
     window_title: windowTitle,
+    document_url: documentURL,
     captured_at: Date().timeIntervalSince1970,
     truncated: nodes.count >= MAX_NODES,
     a11y_tree: nodes
