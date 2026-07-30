@@ -54,9 +54,25 @@ renderer/
 
 ```bash
 npm install
-cp .env.example .env      # add FIREWORKS_API_KEY and Anam credentials
-npm start                 # builds the Swift helper, then launches Electron
+cp .env.example .env
+# open .env and fill in FIREWORKS_API_KEY and ANAM_API_KEY
+npm start          # builds the AX helper + renderer bundle, then launches
 ```
+
+Hotkeys: **Cmd+Shift+Space** ask · **Cmd+Shift+D** devtools · **Cmd+Shift+Q** quit.
+(The window is frameless with no dock icon, so Cmd+Shift+Q is the only way out.)
+
+### The renderer must be bundled
+
+`renderer/renderer.js` imports `@anam-ai/js-sdk`. The renderer runs as a pure
+browser context (`contextIsolation: true`, `nodeIntegration: false`), so it
+cannot resolve bare specifiers, the SDK's extensionless internal imports, or its
+`buffer` dependency. `npm run build:renderer` bundles it with esbuild.
+
+Loading `renderer.js` directly fails **silently** — the card renders its
+hardcoded HTML defaults ("Dormant"), no listeners attach, and `connect()` never
+runs, so the avatar stays black and every button is dead. If you ever see that
+combination, the bundle is stale or missing: run `npm run build:renderer`.
 
 Requires macOS, Xcode command line tools (`xcode-select --install`), and
 Accessibility permission: **System Settings → Privacy & Security →

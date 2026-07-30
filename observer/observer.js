@@ -173,6 +173,15 @@ class Observer extends EventEmitter {
       }
 
       this.consecutiveFailures = 0;
+
+      // Tony's own window must not blind him. Clicking a mode button makes the
+      // overlay frontmost; without this, the observer reads Electron, decides
+      // it is off-console, and goes DORMANT the moment you interact with it.
+      if (/^(electron|tony)$/i.test(payload.frontmost_app || '')) {
+        this.emit('self-focused', this.latest);
+        return;
+      }
+
       const screen = identifyScreen(payload);
       const signals = extractSignals(payload.a11y_tree);
       const hash = stateHash(screen, signals, payload.a11y_tree);

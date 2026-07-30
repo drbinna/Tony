@@ -39,6 +39,18 @@ function createWindow() {
   win.setAlwaysOnTop(true, 'floating');
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+
+  // A renderer that fails to load is invisible from the outside: the card shows
+  // its hardcoded HTML defaults, buttons are dead, and nothing logs. Surface it.
+  win.webContents.on('console-message', (_e, level, message, line, source) => {
+    if (level >= 2) console.error(`[renderer] ${source}:${line} ${message}`);
+  });
+  win.webContents.on('did-fail-load', (_e, code, desc) => {
+    console.error(`[renderer] failed to load: ${desc} (${code})`);
+  });
+  win.webContents.on('preload-error', (_e, p2, err) => {
+    console.error(`[preload] ${p2}: ${err.message}`);
+  });
 }
 
 function send(channel, payload) {
