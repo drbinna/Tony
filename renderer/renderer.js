@@ -1,5 +1,8 @@
-import { createClient } from '@anam-ai/js-sdk';
-import { AnamEvent } from '@anam-ai/js-sdk/dist/module/types';
+// AnamEvent is exported from the package root. The docs import it from
+// '@anam-ai/js-sdk/dist/module/types', which works on esm.sh but throws
+// ERR_UNSUPPORTED_DIR_IMPORT under Node/Electron ESM (no exports map, and
+// directory imports are unsupported). Verified against @anam-ai/js-sdk 2.5.0.
+import { createClient, AnamEvent } from '@anam-ai/js-sdk';
 
 const els = {
   body: document.body,
@@ -7,6 +10,7 @@ const els = {
   detail: document.getElementById('detail'),
   speech: document.getElementById('speech'),
   notice: document.getElementById('notice'),
+  mic: document.getElementById('mic'),
 };
 
 let anam = null;
@@ -42,6 +46,15 @@ function say(text, { bridge = false, append = false } = {}) {
   els.speech.scrollTop = els.speech.scrollHeight;
 }
 
+/** Mic state is part of the consent UI, not a detail. If the card says the mic
+ *  is off, it has to actually be off. */
+function reportMic() {
+  const st = anam?.getInputAudioState?.();
+  const muted = st ? st.isMuted : true;
+  els.mic.textContent = muted ? 'mic off' : 'MIC LIVE';
+  els.mic.dataset.live = String(!muted);
+}
+
 function notice(html) {
   els.notice.innerHTML = html;
   els.notice.classList.add('show');
@@ -56,9 +69,24 @@ async function connect() {
     return;
   }
 
-  anam = createClient(res.token);
+  // disableInputAudio keeps the microphone off entirely until the learner
+  // presses the hotkey. Tony sits open for hours; always-on capture beside a
+  // console is both a privacy problem and a cost one.
+  anam = createClient(res.token, { disableInputAudio: true });
 
-  anam.addListener(AnamEvent.SESSION_READY, () => setState('observing'));
+  anam.addListener(AnamEvent.SESSION_READY, () => {
+    setState('observing');
+    anam.muteInputAudio?.();          // belt and braces alongside disableInputAudio
+    reportMic();
+  });
+
+  // The avatar is only really present once video plays; before that the card
+  // should not claim to be watching.
+  anam.addListener(AnamEvent.VIDEO_PLAY_STARTED, () => setState('observing'));
+
+  anam.addListener(AnamEvent.SERVER_WARNING, (w) => {
+    notice(`Anam warning: ${typeof w === 'string' ? w : JSON.stringify(w)}`);
+  });
   // Session tokens expire after 3600s (measured). A learning session outlives
   // that easily, so reconnect rather than going silently dormant mid-lesson.
   anam.addListener(AnamEvent.CONNECTION_CLOSED, () => {

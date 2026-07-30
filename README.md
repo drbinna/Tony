@@ -98,6 +98,21 @@ stateless calls. Without them, v1 of the prompt told the identical anecdote in
 overlay drops to `idle`. This halves the capture surface and matches the persona
 rule about not commenting on things the learner did not ask about.
 
+## Verified against the real SDK (@anam-ai/js-sdk 2.5.0)
+
+The docs import `AnamEvent` from `@anam-ai/js-sdk/dist/module/types`. That works
+on esm.sh but throws `ERR_UNSUPPORTED_DIR_IMPORT` under Node/Electron ESM — the
+package ships no exports map and directory imports are unsupported. Import from
+the package root instead. This crashes on launch if you follow the docs verbatim.
+
+Real `AnamEvent` members: MESSAGE_HISTORY_UPDATED, MESSAGE_STREAM_EVENT_RECEIVED,
+CONNECTION_ESTABLISHED, CONNECTION_CLOSED, INPUT_AUDIO_STREAM_STARTED,
+VIDEO_STREAM_STARTED, VIDEO_PLAY_STARTED, AUDIO_STREAM_STARTED,
+TALK_STREAM_INTERRUPTED, SESSION_READY, SERVER_WARNING.
+
+The package also exports `unsafe_createClientWithApiKey`. Do not use it — that is
+the path that puts your Anam key in the renderer.
+
 ## Known gaps
 
 - **Cache hit rate is unmeasured.** This is THE open question. At 100% Tony
@@ -115,9 +130,11 @@ rule about not commenting on things the learner did not ask about.
 - **WebRTC paths are unverified.** Key auth, persona listing, and
   mintSessionToken() are all confirmed against the live API. `talk()` and
   `createTalkMessageStream()` need a browser session and have not been run.
-- **Mic gating is unresolved.** Anam's quickstart auto-requests the microphone
-  and listens continuously. Tony uses a push-to-talk hotkey instead, but whether
-  the mic can be fully disabled in the SDK is not documented in the pages read.
+- ~~Mic gating is unresolved.~~ **RESOLVED.** The SDK exposes
+  `createClient(token, { disableInputAudio: true })` plus `muteInputAudio()`,
+  `unmuteInputAudio()`, and `getInputAudioState()`. Tony starts with the mic
+  fully off and surfaces its live state in the status bar, because a card that
+  says "mic off" has to mean it.
 - **No vision fallback wired yet.** The slow prompt can return `need_vision`,
   and k3-fast grounds at 0-2px on this fixture, but the screenshot capture path
   is not built. The AX tree covers the mock console completely; real consoles
