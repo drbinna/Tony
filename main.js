@@ -45,6 +45,13 @@ function createWindow() {
   // A renderer that fails to load is invisible from the outside: the card shows
   // its hardcoded HTML defaults, buttons are dead, and nothing logs. Surface it.
   win.webContents.on('console-message', (_e, level, message, line, source) => {
+    // srtp/RTCP unprotect failures are benign WebRTC decrypt retries; at volume
+    // they bury real errors. Count them, surface only a periodic summary.
+    if (/srtp_transport|Failed to unprotect|hv_vmm_present/.test(message)) {
+      rtpNoise += 1;
+      if (rtpNoise % 100 === 0) console.warn(`[webrtc] ${rtpNoise} packet-decrypt retries (network congestion)`);
+      return;
+    }
     if (level >= 2) console.error(`[renderer] ${source}:${line} ${message}`);
   });
   win.webContents.on('did-fail-load', (_e, code, desc) => {
@@ -79,6 +86,7 @@ async function checkPermissions() {
  * product becomes a trust-building one.
  */
 let driving = false;
+let rtpNoise = 0;
 
 function abortDriving(reason) {
   pointer?.clear();                  // learner acted: drop the ring immediately

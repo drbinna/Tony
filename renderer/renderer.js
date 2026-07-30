@@ -67,6 +67,19 @@ function reportMic() {
   els.mic.dataset.live = String(live);
 }
 
+let netTimer = null;
+/** Transient network-quality readout in the detail slot. Congestion is common
+ *  on WiFi and self-heals; a persistent modal would cry wolf. */
+function showNetworkState(label) {
+  els.detail.textContent = label;
+  els.detail.dataset.net = 'weak';
+  clearTimeout(netTimer);
+  netTimer = setTimeout(() => {
+    els.detail.dataset.net = '';
+    els.detail.textContent = '';
+  }, 6000);
+}
+
 function notice(html) {
   els.notice.innerHTML = html;
   els.notice.classList.add('show');
@@ -109,7 +122,15 @@ async function connect() {
   anam.addListener(AnamEvent.VIDEO_PLAY_STARTED, () => setState('observing'));
 
   anam.addListener(AnamEvent.SERVER_WARNING, (w) => {
-    notice(`Anam warning: ${typeof w === 'string' ? w : JSON.stringify(w)}`);
+    const msg = (typeof w === 'string' ? w : (w && w.message) || JSON.stringify(w)) || '';
+    // Congestion is a network condition, not a Tony failure. Say so plainly and
+    // transiently, in the status line, instead of a scary modal warning.
+    if (/congest|network|bandwidth|quality reduced/i.test(msg)) {
+      els.mic.dataset.net = 'weak';
+      showNetworkState('weak connection');
+    } else {
+      notice(`Anam: ${msg}`);
+    }
   });
   // Session tokens expire after 3600s (measured). A learning session outlives
   // that easily, so reconnect rather than going silently dormant mid-lesson.

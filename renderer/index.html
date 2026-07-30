@@ -78,6 +78,7 @@
   body[data-state="observing"] #dot { animation: breathe 3s ease-in-out infinite; }
   @keyframes breathe { 0%,100% { opacity: .35; } 50% { opacity: 1; } }
   #detail { margin-left: auto; color: rgba(232,237,234,.4); text-transform: none; letter-spacing: 0; }
+  #detail[data-net="weak"] { color: var(--ember); }
   /* mic state is a promise the UI makes; it must be readable at a glance */
   #mic { color: rgba(232,237,234,.35); }
   #mic[data-live="true"] { color: var(--ember); font-weight: 700; }
