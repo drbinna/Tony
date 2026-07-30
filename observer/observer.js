@@ -63,22 +63,41 @@ function identifyScreen({ frontmost_app, window_title, a11y_tree }) {
 }
 
 /** Facts worth reacting to, extracted deterministically. These are the trigger
- *  conditions from the persona spec — no model needed to spot 0.0.0.0/0. */
+ *  conditions from the persona spec — no model needed to spot 0.0.0.0/0.
+ *
+ *  CRITICAL DISTINCTION: state signals must be read from INTERACTIVE FIELD
+ *  VALUES, never from static text. AWS's own warning banner contains the
+ *  literal string "0.0.0.0/0" ("Rules with source of 0.0.0.0/0 allow all IP
+ *  addresses..."), so scanning all text keeps the signal lit even after the
+ *  learner fixes the field — and Tony nags about a solved problem forever.
+ *  Measured in test/session-sim.js before this split existed. */
+const FIELD_ROLES = ['textfield', 'textarea', 'combobox', 'popupbutton', 'checkbox', 'radiobutton'];
+
 function extractSignals(tree) {
   const signals = [];
-  const text = tree.map((n) => `${n.label} ${n.value}`).join(' | ');
 
-  if (/0\.0\.0\.0\/0/.test(text)) signals.push('open_to_world');
-  if (/\bport\s*22\b|(^|\W)ssh(\W|$)/i.test(text) && /0\.0\.0\.0\/0/.test(text)) {
+  // what the learner has actually SET
+  const fieldText = tree
+    .filter((n) => FIELD_ROLES.includes(n.role))
+    .map((n) => `${n.label} ${n.value}`).join(' | ');
+
+  // what the page merely SAYS (banners, headings, summaries)
+  const allText = tree.map((n) => `${n.label} ${n.value}`).join(' | ');
+
+  if (/0\.0\.0\.0\/0/.test(fieldText)) signals.push('open_to_world');
+  if (/\bport\s*22\b|(^|\W)ssh(\W|$)/i.test(fieldText) && /0\.0\.0\.0\/0/.test(fieldText)) {
     signals.push('ssh_open_to_world');
   }
-  if (/public|publicly accessible|block all public access.*off/i.test(text)) {
-    signals.push('possibly_public');
+  if (/\ball traffic\b|\banywhere\b/i.test(fieldText) && !/my ip/i.test(fieldText)) {
+    signals.push('broad_source');
   }
-  if (/root user|logged in as root/i.test(text)) signals.push('root_usage');
-  if (/"?Action"?\s*:\s*"?\*"?|Resource.*\*/.test(text)) signals.push('wildcard_iam');
+  if (/public|publicly accessible/i.test(fieldText)) signals.push('possibly_public');
+  if (/"?Action"?\s*:\s*"?\*"?|Resource.*\*/.test(fieldText)) signals.push('wildcard_iam');
 
-  const m = text.match(/\b([a-z]\d[a-z]?\.(nano|micro|small|medium|large|\d*xlarge))\b/i);
+  // status indicators legitimately live in static chrome
+  if (/root user|logged in as root/i.test(allText)) signals.push('root_usage');
+
+  const m = allText.match(/\b([a-z]\d[a-z]?\.(nano|micro|small|medium|large|\d*xlarge))\b/i);
   if (m) signals.push(`instance_type:${m[1]}`);
 
   return signals;

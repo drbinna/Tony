@@ -31,7 +31,8 @@ class PrecomputeCache {
     this.maxEntries = maxEntries;
     this.store = new Map();      // key -> { text, action, at, stateHash }
     this.inflight = new Map();   // key -> Promise (dedupe concurrent precomputes)
-    this.stats = { hits: 0, misses: 0, stale: 0, precomputed: 0 };
+    this.stats = { hits: 0, misses: 0, stale: 0, precomputed: 0, warmFailed: 0 };
+    this.lastWarmError = null;
   }
 
   static key(screenKey, intent, stateHash) {
@@ -87,7 +88,13 @@ class PrecomputeCache {
         .then((result) => {
           if (result && result.text) this.set(screenKey, intent, stateHash, result);
         })
-        .catch(() => { /* a failed warm is invisible: the miss path still works */ })
+        .catch((err) => {
+          // The miss path still works, so this is never fatal — but silent
+          // failures cost us a precompute slot and skew hit rate downward
+          // with no explanation. Count them.
+          this.stats.warmFailed = (this.stats.warmFailed ?? 0) + 1;
+          this.lastWarmError = `${intent}: ${err.message}`;
+        })
         .finally(() => this.inflight.delete(k));
 
       this.inflight.set(k, p);
@@ -108,6 +115,7 @@ class PrecomputeCache {
       hitRate: r === null ? 'no data' : `${(r * 100).toFixed(1)}%`,
       entries: this.store.size,
       inflight: this.inflight.size,
+      lastWarmError: this.lastWarmError ?? 'none',
     };
   }
 }
