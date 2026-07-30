@@ -142,6 +142,15 @@ app.whenReady().then(async () => {
     send('state', { state: 'paused' });
   });
 
+  observer.on('web-content-missing', () => {
+    // The AXManualAccessibility wake did not take — usually Chrome's own a11y
+    // was turned off. This is the documented manual fallback.
+    send('notice', {
+      text: "I can see the browser but not the page. Open chrome://accessibility, "
+        + "tick 'Web accessibility', reload the console, and I'll see it.",
+    });
+  });
+
   observer.on('observer-error', (e) => send('observer-error', e));
   observer.start();
 

@@ -114,6 +114,27 @@ let axApp = AXUIElementCreateApplication(app.processIdentifier)
 var windowTitle = ""
 var documentURL = ""
 
+/// Chromium only exposes its WEB-CONTENT accessibility tree (the AXWebArea and
+/// everything inside the rendered page) once it detects an assistive client.
+/// Without this it hands out only the native window chrome — tabs, toolbar,
+/// buttons — which is exactly the "I can see the tab but not the page" symptom.
+///
+/// Two switches wake it, and we set both because Chrome versions disagree on
+/// which they honor:
+///   AXManualAccessibility   — the attribute Electron/Chromium added expressly
+///                             for non-VoiceOver assistive clients
+///   AXEnhancedUserInterface — the older attribute VoiceOver itself sets
+/// Reading the app's role afterward nudges Chrome to build the tree before we
+/// walk it. Safe on any app; a no-op on browsers that already expose content.
+func wakeWebAccessibility(_ app: AXUIElement) {
+    let yes = kCFBooleanTrue as CFTypeRef
+    AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, yes)
+    AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, yes)
+    var role: CFTypeRef?
+    AXUIElementCopyAttributeValue(app, kAXRoleAttribute as CFString, &role)
+}
+wakeWebAccessibility(axApp)
+
 /// Browsers expose the live URL via AXDocument on the window, and AXURL on the
 /// web area. This is FAR more reliable than sniffing window titles: AWS console
 /// titles vary per service and per page ("Console Home", "Launch an instance |
@@ -147,15 +168,21 @@ struct Payload: Encodable {
     let frontmost_app: String
     let window_title: String
     let document_url: String
+    let has_web_content: Bool
     let captured_at: Double
     let truncated: Bool
     let a11y_tree: [Node]
 }
 
+// If we captured a document URL, or the walk found web-area content, the page
+// tree is awake. Empty + browser + no URL means Chrome has not built it yet.
+let hasWebContent = !documentURL.isEmpty || nodes.count > 4
+
 let payload = Payload(
     frontmost_app: app.localizedName ?? "unknown",
     window_title: windowTitle,
     document_url: documentURL,
+    has_web_content: hasWebContent,
     captured_at: Date().timeIntervalSince1970,
     truncated: nodes.count >= MAX_NODES,
     a11y_tree: nodes

@@ -229,6 +229,8 @@ window.tony.on('permissions', (perms) => {
   }
 });
 
+window.tony.on('notice', ({ text }) => notice(text));
+
 window.tony.on('observer-error', (e) => {
   if (e.fatal) notice(`Observer stopped: ${e.message}`);
 });

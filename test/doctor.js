@@ -66,6 +66,12 @@ try {
     payload.a11y_tree.length
       ? ok(`tree:      ${payload.a11y_tree.length} elements${payload.truncated ? ' (TRUNCATED)' : ''}`)
       : bad('tree: 0 elements — Chromium may not have populated its AX tree yet');
+    if (/chrome|safari|firefox|arc|edge/i.test(payload.frontmost_app || '')) {
+      payload.has_web_content
+        ? ok('web content: PAGE VISIBLE (AXWebArea awake)')
+        : bad('web content: only browser chrome, NOT the page — open '
+            + 'chrome://accessibility, tick "Web accessibility", reload');
+    }
   }
 } catch (e) {
   bad(e.code === 'ENOENT'

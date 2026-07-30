@@ -10,7 +10,7 @@ contextBridge.exposeInMainWorld('tony', {
   on: (channel, fn) => {
     const allowed = [
       'speak', 'speak-followup', 'state', 'screen',
-      'permissions', 'observer-error', 'deadman-abort',
+      'permissions', 'observer-error', 'deadman-abort', 'notice',
     ];
     if (!allowed.includes(channel)) return () => {};
     const handler = (_e, payload) => fn(payload);

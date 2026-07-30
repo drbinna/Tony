@@ -174,6 +174,20 @@ class Observer extends EventEmitter {
 
       this.consecutiveFailures = 0;
 
+      // Chrome builds its web-content tree asynchronously after we set
+      // AXManualAccessibility. The first read or two after landing on a page
+      // can come back with chrome but no page content. Don't report that as an
+      // empty screen — wait for the tree to wake (next tick will have it).
+      const isBrowser = /chrome|safari|firefox|arc|edge/i.test(payload.frontmost_app || '');
+      if (isBrowser && payload.has_web_content === false) {
+        this.emptyWebReads = (this.emptyWebReads || 0) + 1;
+        if (this.emptyWebReads <= 3) return;    // give it ~4.5s to wake
+        // persistently empty: Chrome accessibility may be disabled entirely
+        this.emit('web-content-missing', { app: payload.frontmost_app });
+      } else {
+        this.emptyWebReads = 0;
+      }
+
       // Tony's own window must not blind him. Clicking a mode button makes the
       // overlay frontmost; without this, the observer reads Electron, decides
       // it is off-console, and goes DORMANT the moment you interact with it.
