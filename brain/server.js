@@ -211,6 +211,24 @@ class Brain {
     return { text: obj.say, action: obj.action ?? { type: 'none' } };
   }
 
+  // ------------------------------------------------------------ pilot mode
+
+  /** One turn of the Playwright lesson loop: system + running history in,
+   *  raw model text out (the Lesson layer parses the JSON action). */
+  async pilotTurn(system, messages) {
+    const res = await fetch(FIREWORKS, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.fireworksKey}` },
+      body: JSON.stringify({
+        model: SLOW_MODEL, max_tokens: 2000, temperature: 0.3,
+        messages: [{ role: 'system', content: system }, ...messages],
+      }),
+    });
+    if (!res.ok) throw new Error(`pilot: ${res.status} ${(await res.text()).slice(0, 200)}`);
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content?.trim() || '';
+  }
+
   // --------------------------------------------------------- session state
 
   /** A concern raised is a concern settled. Nagging is how you get uninstalled. */

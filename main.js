@@ -9,6 +9,13 @@ const { Pointer } = require('./pointer/pointer');
 const { Driver } = require('./pointer/driver');
 const { Transcript } = require('./brain/transcript');
 const { Grounder } = require('./brain/vision');
+const { Pilot } = require('./browser/pilot');
+const { Lesson } = require('./browser/lesson');
+
+// Pilot mode: Tony owns a Playwright lesson browser and drives it via ARIA
+// snapshots (no OS input synthesis, no screenshots-to-click). The classic
+// observer/CGEvent path stays available when the flag is off.
+const PILOT_MODE = process.env.TONY_PILOT === '1';
 
 const WIDTH = 220;
 const HEIGHT = 340;
@@ -19,6 +26,8 @@ let brain = null;
 let pointer = null;
 let driver = null;
 let grounder = null;
+let pilot = null;
+let lesson = null;
 let transcript = null;
 
 // ---------------------------------------------------------------- window
@@ -253,7 +262,32 @@ app.whenReady().then(async () => {
     transcript.log('observer-error', { message: e.message, fatal: !!e.fatal, consecutive: e.consecutive });
     send('observer-error', e);
   });
-  observer.start();
+  if (!PILOT_MODE) observer.start();
+
+  if (PILOT_MODE) {
+    const region = process.env.TONY_REGION || 'us-east-1';
+    pilot = new Pilot({ userDataDir: path.join(app.getPath('userData'), 'lesson-profile') });
+    lesson = new Lesson({
+      brain, pilot, transcript,
+      speak: (text) => send('speak', { text, via: 'cache' }),
+      config: {
+        accountAlias: process.env.TONY_ACCOUNT_ALIAS || 'GoblinLabs sandbox',
+        region,
+        level: process.env.TONY_LEVEL || 'beginner',
+        lessonGoal: process.env.TONY_LESSON_GOAL || 'get comfortable in the AWS console by doing',
+      },
+    });
+    pilot.launch(`https://${region}.console.aws.amazon.com/console/home?region=${region}`)
+      .then(() => {
+        transcript.log('pilot-ready', { url: pilot.url() });
+        console.log(`[pilot] lesson browser up at ${pilot.url()}`);
+        send('state', { state: 'observing' });
+      })
+      .catch((e) => {
+        console.error(`[pilot] launch failed: ${e.message}`);
+        send('notice', { text: `Lesson browser failed to launch: ${e.message}` });
+      });
+  }
 
   // Push-to-talk. Always-on mic while someone works for hours is both a privacy
   // problem and a cost one, so the hotkey is the primary input.
@@ -262,6 +296,12 @@ app.whenReady().then(async () => {
   // collision surfaces instead of failing silently.
   const ASK_HOTKEY = process.env.TONY_ASK_HOTKEY || 'Control+Alt+Space';
   const askOk = globalShortcut.register(ASK_HOTKEY, async () => {
+    if (PILOT_MODE && lesson) {
+      send('state', { state: 'thinking' });
+      lesson.turn('What am I looking at right now?').catch(() => {})
+        .finally(() => send('state', { state: 'observing' }));
+      return;
+    }
     const frame = observer.latest;
     if (!frame || !frame.screen.aws) return;
     send('state', { state: 'thinking' });
@@ -632,6 +672,18 @@ ipcMain.on('learner-input', () => abortDriving('learner input'));
 // This is the spoken counterpart of the hotkey path: same brain, same context,
 // input arrives as transcribed voice instead of a keypress.
 ipcMain.on('heard', async (_e, text) => {
+  // Pilot mode: every utterance goes to the lesson loop — the model handles
+  // consent, safety classification, and yielding per the pilot prompt.
+  if (PILOT_MODE && lesson) {
+    send('state', { state: 'thinking' });
+    lesson.turn(text)
+      .catch((e) => {
+        console.error(`[lesson] ${e.message}`);
+        transcript?.log('pilot-turn', { learner: text, error: e.message.slice(0, 200) });
+      })
+      .finally(() => send('state', { state: 'observing' }));
+    return;
+  }
   // No frame yet (just launched, or only Tony's own window has been frontmost)
   // must not mean the learner gets ignored: answer against an explicit
   // no-screen frame instead. The ask event logs screen 'off:unknown' so blind
@@ -678,6 +730,7 @@ ipcMain.on('open-accessibility-settings', () => {
 
 app.on('will-quit', () => {
   transcript?.log('session-end', { cache: brain ? brain.cache.report() : null });
+  pilot?.close().catch(() => {});
   globalShortcut.unregisterAll();
 });
 app.on('window-all-closed', () => app.quit());
