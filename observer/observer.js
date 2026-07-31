@@ -163,7 +163,14 @@ class Observer extends EventEmitter {
   }
 
   tick() {
-    execFile(HELPER, { timeout: 4000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
+    // One capture at a time. The interval keeps firing while a slow capture
+    // runs; without this guard, heavy console pages (measured: Bedrock) stack
+    // 2-3 concurrent ax-dump processes that slow each other into the timeout,
+    // and the observer flaps between failures and chrome-only trees.
+    if (this.inflight) return;
+    this.inflight = true;
+    execFile(HELPER, { timeout: 6000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
+      this.inflight = false;
       if (err) {
         this.consecutiveFailures += 1;
         if (this.consecutiveFailures === 1 || this.consecutiveFailures % 20 === 0) {
