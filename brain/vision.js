@@ -45,15 +45,34 @@ class Grounder {
     this.height = height;
     this.log = log;
     this.shotPath = path.join(os.tmpdir(), 'tony-ground.png');
+    // Two ways in, OpenRouter preferred when both keys exist:
+    //  - OPENROUTER_API_KEY -> OpenRouter's Anthropic-Messages-compatible
+    //    endpoint (base https://openrouter.ai/api, tilde model ids). Their
+    //    router may not pass output_config through, so this path enforces
+    //    the JSON contract by prompt and parses defensively.
+    //  - ANTHROPIC_API_KEY  -> direct API with strict structured outputs.
     // The SDK constructor THROWS with no key — guard so a keyless launch
     // boots with vision disabled instead of dead.
-    this.client = process.env.ANTHROPIC_API_KEY
-      ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-      : null;
+    if (process.env.OPENROUTER_API_KEY) {
+      this.provider = 'openrouter';
+      this.model = process.env.TONY_VISION_MODEL || '~anthropic/claude-opus-latest';
+      this.client = new Anthropic({
+        apiKey: process.env.OPENROUTER_API_KEY,
+        baseURL: 'https://openrouter.ai/api',
+      });
+    } else if (process.env.ANTHROPIC_API_KEY) {
+      this.provider = 'anthropic';
+      this.model = process.env.TONY_VISION_MODEL || 'claude-opus-4-8';
+      this.client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    } else {
+      this.provider = null;
+      this.model = null;
+      this.client = null;
+    }
   }
 
   enabled() {
-    return !!process.env.ANTHROPIC_API_KEY;
+    return this.client !== null;
   }
 
   /** Screenshot at logical resolution, base64 PNG. */
@@ -75,31 +94,61 @@ class Grounder {
    */
   async ground(target) {
     const data = this.capture();
-    const res = await this.client.messages.create({
-      model: 'claude-opus-4-8',
+    const instructions =
+      `This is a ${this.width}x${this.height} screenshot of a computer screen. `
+      + `Locate this UI element: "${target}". `
+      + `Return the CENTER pixel coordinates of the exact clickable element and its approximate size. `
+      + `If it is not visible on screen, return found=false.`;
+
+    const req = {
+      model: this.model,
       max_tokens: 500,
-      output_config: {
-        effort: 'low',   // perception task; latency matters more than depth
-        format: { type: 'json_schema', schema: GROUND_SCHEMA },
-      },
       messages: [{
         role: 'user',
         content: [
           { type: 'image', source: { type: 'base64', media_type: 'image/png', data } },
-          {
-            type: 'text',
-            text: `This is a ${this.width}x${this.height} screenshot of a computer screen. `
-              + `Locate this UI element: "${target}". `
-              + `Return the CENTER pixel coordinates of the exact clickable element and its approximate size. `
-              + `If it is not visible on screen, return found=false.`,
-          },
+          { type: 'text', text: instructions },
         ],
       }],
-    });
+    };
+
+    if (this.provider === 'anthropic') {
+      // Direct API: strict structured outputs guarantee the shape.
+      req.output_config = {
+        effort: 'low',   // perception task; latency matters more than depth
+        format: { type: 'json_schema', schema: GROUND_SCHEMA },
+      };
+    } else {
+      // OpenRouter compat path: enforce by prompt, parse defensively below.
+      req.messages[0].content[1].text += ' Respond with ONLY a JSON object: '
+        + '{"found": boolean, "x": int, "y": int, "width": int, "height": int, "label": string}. '
+        + 'No prose, no markdown fences.';
+    }
+
+    const res = await this.client.messages.create(req);
     const text = res.content.find((b) => b.type === 'text')?.text ?? '{}';
-    const out = JSON.parse(text);
-    out.usage = { in: res.usage.input_tokens, out: res.usage.output_tokens };
+    const out = Grounder.parseJson(text);
+    if (!out) throw new Error(`grounding returned unparseable output: ${text.slice(0, 120)}`);
+    out.usage = { in: res.usage?.input_tokens, out: res.usage?.output_tokens };
     return out;
+  }
+
+  /** Extract the last balanced JSON object — tolerates fences and prose. */
+  static parseJson(text) {
+    const out = [];
+    let depth = 0;
+    let start = -1;
+    for (let i = 0; i < text.length; i += 1) {
+      if (text[i] === '{') { if (depth === 0) start = i; depth += 1; }
+      else if (text[i] === '}' && depth) { depth -= 1; if (depth === 0) out.push(text.slice(start, i + 1)); }
+    }
+    for (let i = out.length - 1; i >= 0; i -= 1) {
+      try {
+        const o = JSON.parse(out[i]);
+        if (o && typeof o === 'object' && 'found' in o) return o;
+      } catch { /* keep looking */ }
+    }
+    return null;
   }
 }
 

@@ -190,7 +190,9 @@ app.whenReady().then(async () => {
   pointer = new Pointer();
   driver = new Driver();
   grounder = new Grounder(screen.getPrimaryDisplay().size);
-  console.log(`[vision] grounding ${grounder.enabled() ? 'ENABLED (claude-opus-4-8)' : 'disabled — set ANTHROPIC_API_KEY in .env'}`);
+  console.log(`[vision] grounding ${grounder.enabled()
+    ? `ENABLED via ${grounder.provider} (${grounder.model})`
+    : 'disabled — set OPENROUTER_API_KEY or ANTHROPIC_API_KEY in .env'}`);
   observer = new Observer({ intervalMs: Number(process.env.TICK_MS) || 1500 });
 
   // Screen change is the strongest precompute signal: the learner just landed
