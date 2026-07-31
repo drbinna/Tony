@@ -366,7 +366,7 @@ function ringFromAction(rawAction, askFrame) {
   if (p) {
     console.log(`[pointer] ring -> ${action.element_id} @ [${p.bounds}] "${p.label}"`);
     transcript?.log('pointer', { ring: true, element: action.element_id, label: p.label });
-    brain.session.lastPointed = { element_id: action.element_id, label: p.label };
+    brain.session.lastPointed = { element_id: action.element_id, label: p.label, at: Date.now() };
     pointer.point(p);
   } else {
     // The brain named an element that is not in the tree. This is the most
@@ -441,7 +441,7 @@ async function driveAction(action, frame) {
   driving = true;
   send('state', { state: 'driving' });
   pointer.point({ bounds: target.bounds, label: (target.label || '').slice(0, 40) || action.type });
-  brain.session.lastPointed = { element_id: action.element_id, label: target.label || '' };
+  brain.session.lastPointed = { element_id: action.element_id, label: target.label || '', at: Date.now() };
   transcript?.log('drive', {
     type: action.type, element: action.element_id, label: target.label,
     x: cx, y: cy, reresolved: target !== el,
@@ -489,6 +489,36 @@ async function driveAction(action, frame) {
 }
 
 /**
+ * Grounding cache. Measured: the same target grounds to identical coordinates
+ * across consecutive screenshots (Select model 3x, Anthropic row 3x — all
+ * byte-identical), and the dominant flow is point-then-"click it", which
+ * grounds the same element twice. Reuse a fresh grounding when the target
+ * matches (exact or containment after normalization) and the screen hasn't
+ * materially changed (tree size within tolerance). Saves a full ~5s Claude
+ * round trip on roughly half of real interactions.
+ */
+const groundCache = [];
+const normTarget = (t) => String(t).toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+
+function cachedGrounding(target) {
+  const n = normTarget(target);
+  const nodes = (observer.latest?.tree || []).length;
+  const now = Date.now();
+  for (let i = groundCache.length - 1; i >= 0; i -= 1) {
+    const c = groundCache[i];
+    if (now - c.at > 30000) continue;
+    if (Math.abs(c.treeNodes - nodes) > 8) continue;   // screen likely changed
+    if (c.norm === n || c.norm.includes(n) || n.includes(c.norm)) return c.g;
+  }
+  return null;
+}
+
+function rememberGrounding(target, g) {
+  groundCache.push({ norm: normTarget(target), g, at: Date.now(), treeNodes: (observer.latest?.tree || []).length });
+  if (groundCache.length > 12) groundCache.shift();
+}
+
+/**
  * Vision-grounded actuation — the computer-use path. Claude locates the
  * target on a live screenshot (coordinates come back in logical screen
  * pixels, 1:1 with CGEvent coords); the ring shows what was found; drive.swift
@@ -500,11 +530,16 @@ async function visionActuate(action) {
     return;
   }
   const t0 = Date.now();
-  const g = await grounder.ground(action.target);
+  let g = cachedGrounding(action.target);
+  const cached = !!g;
+  if (!g) {
+    g = await grounder.ground(action.target);
+    if (g.found) rememberGrounding(action.target, g);
+  }
   transcript?.log('vision-ground', {
     target: action.target, found: g.found, label: g.label,
     x: g.x, y: g.y, w: g.width, h: g.height,
-    tookMs: Date.now() - t0, tokens: g.usage,
+    tookMs: Date.now() - t0, cached, ...(cached ? {} : { tokens: g.usage }),
   });
 
   if (!g.found) {
@@ -521,7 +556,7 @@ async function visionActuate(action) {
 
   const bounds = [g.x - g.width / 2, g.y - g.height / 2, g.width, g.height];
   pointer.point({ bounds, label: (g.label || action.target).slice(0, 40) });
-  brain.session.lastPointed = { element_id: action.element_id ?? null, label: g.label || action.target };
+  brain.session.lastPointed = { element_id: action.element_id ?? null, label: g.label || action.target, at: Date.now() };
   console.log(`[vision] ${action.type} -> "${action.target}" @ ${g.x},${g.y} (${Date.now() - t0}ms)`);
 
   if (action.type === 'point') return;   // ring only; the learner clicks
@@ -605,6 +640,21 @@ ipcMain.on('heard', async (_e, text) => {
     screen: { app: 'unknown', aws: false, service: null, page: null, key: 'off:unknown' },
     signals: [], tree: [], windowTitle: '', documentUrl: '', at: Date.now(),
   };
+  // CONFIRMATION FAST PATH. "Click it" after a ring used to pay a full
+  // 5-15s slow-brain round trip just to re-emit the action it had already
+  // proposed. A bare confirmation with a fresh last_pointed skips the brain:
+  // spoken ack at the ~270ms floor, then actuate the pointed target directly
+  // (through ringFromAction, so the AWS scope wall and sandbox gate still
+  // apply). Conservative regex — anything with extra words goes to the brain.
+  const CONFIRM_RE = /^(?:yes|yeah|yep|sure|ok(?:ay)?|do it|go ahead|go for it|(?:go ahead and )?(?:click|hit) it(?: now)?|go ahead and (?:click|hit) it)[.,! ]*$/i;
+  const lp = brain.session.lastPointed;
+  if (CONFIRM_RE.test(text.trim()) && lp?.at && Date.now() - lp.at < 45000 && frame.screen.aws) {
+    transcript?.log('fast-confirm', { question: text, target: lp.label });
+    send('speak', { text: `Clicking ${String(lp.label).slice(0, 50)}.`, via: 'cache' });
+    ringFromAction({ type: 'click', target: lp.label, element_id: lp.element_id }, observer.latest);
+    return;
+  }
+
   // Off-console questions still deserve an answer; the brain handles the
   // 'not AWS' case by talking generally rather than teaching a screen.
   const res = await askLogged('voice', {
