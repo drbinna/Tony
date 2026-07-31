@@ -196,6 +196,21 @@ async function connect() {
 }
 
 /**
+ * TTS pronunciation fixes. The card DISPLAYS the literal text ("us-east-1");
+ * only the string handed to the voice is rewritten. Regions were the measured
+ * offender: "us-east-1" spoke as the word "us", not "U S".
+ */
+const REGION_PREFIX = {
+  us: 'U S', eu: 'E U', ap: 'A P', sa: 'S A', ca: 'C A', me: 'M E', af: 'A F', il: 'I L',
+};
+function normalizeForSpeech(text) {
+  return text.replace(
+    /\b(us|eu|ap|sa|ca|me|af|il)-(east|west|north|south|central|northeast|southeast|northwest|southwest)-(\d)\b/gi,
+    (_, p, dir, n) => `${REGION_PREFIX[p.toLowerCase()]} ${dir} ${n}`
+  );
+}
+
+/**
  * Cache hit: a complete string is already in hand, so talk() fires it with no
  * stream setup. Measured at the 270ms floor — pure Anam overhead, no inference
  * on the critical path.
@@ -203,7 +218,7 @@ async function connect() {
 function speakComplete(text) {
   setState('speaking');
   say(text);
-  anam?.talk(text);
+  anam?.talk(normalizeForSpeech(text));
 }
 
 /**
@@ -214,7 +229,7 @@ function speakComplete(text) {
 function speakBridge(text) {
   setState('speaking');
   say(text, { bridge: true });
-  anam?.talk(text);
+  anam?.talk(normalizeForSpeech(text));
 }
 
 /** Substance arriving behind the bridge, streamed as tokens land. */
@@ -223,7 +238,7 @@ function speakFollowUp(text) {
   if (!anam) return;
   activeStream = anam.createTalkMessageStream();
   if (activeStream.isActive()) {
-    activeStream.streamMessageChunk(text, false);
+    activeStream.streamMessageChunk(normalizeForSpeech(text), false);
     activeStream.endMessage();
   }
   activeStream = null;

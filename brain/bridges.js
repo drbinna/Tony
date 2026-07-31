@@ -25,11 +25,11 @@
  */
 
 const POOL = [
-  'On it.',
+  'Working.',
   'Sec.',
   'Gimme a beat.',
   'Hold on.',
-  'Alright.',
+  'Lemme look.',
   'Hmm.',
 ];
 
