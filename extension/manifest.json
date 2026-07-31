@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Tony — AWS Console Tutor Bridge",
+  "version": "0.1.0",
+  "description": "Lets Tony (the goblin cloud tutor) see the console page you're on, highlight elements, and act with your consent. Talks only to the Tony app on this machine.",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.console.aws.amazon.com/*",
+        "https://console.aws.amazon.com/*",
+        "https://health.aws.amazon.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
