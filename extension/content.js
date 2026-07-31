@@ -3,22 +3,16 @@
  * Tony bridge — content script.
  *
  * Runs in the learner's OWN Chrome on AWS console pages (their login, their
- * session — nothing to re-authenticate). Connects to the Tony app over a
- * localhost WebSocket and answers a tiny command set:
+ * session — nothing to re-authenticate). The background service worker owns
+ * the WebSocket to the Tony app (the console page's CSP forbids sockets from
+ * here) and relays commands via chrome.runtime messaging:
  *   snapshot   -> role/name list of visible, interactive page structure
- *   highlight  -> orange outline + label chip on an element (guided pointing)
+ *   highlight  -> orange outline + "Tony" chip on an element (guided pointing)
  *   click      -> DOM click on an element (only sent after learner consent)
  *   type       -> focus a field and set its value React-compatibly
  *   press      -> dispatch a keyboard event to the focused element
  *   goto       -> navigate (Tony whitelists to AWS hosts before sending)
- *
- * 127.0.0.1 is a secure context, so ws:// from an https page is allowed.
- * No page data leaves the machine: the only peer is the local Tony app.
  */
-
-const TONY_WS = 'ws://127.0.0.1:8787/tony';
-let ws = null;
-let retryMs = 1000;
 
 // ---------------------------------------------------------------- snapshot
 
@@ -121,12 +115,9 @@ function highlight(target, ms = 6000) {
   chip.textContent = 'Tony';
   chip.style.cssText = 'position:fixed;z-index:2147483647;background:#FF8A3D;color:#1A0D00;'
     + 'font:700 11px -apple-system,sans-serif;padding:2px 8px;border-radius:999px;pointer-events:none;';
-  const place = () => {
-    const r = el.getBoundingClientRect();
-    chip.style.left = `${Math.max(4, r.left)}px`;
-    chip.style.top = `${Math.max(4, r.top - 22)}px`;
-  };
-  place();
+  const r = el.getBoundingClientRect();
+  chip.style.left = `${Math.max(4, r.left)}px`;
+  chip.style.top = `${Math.max(4, r.top - 22)}px`;
   document.documentElement.appendChild(chip);
   setTimeout(() => { el.style.cssText = prev; chip?.remove(); chip = null; }, ms);
 }
@@ -160,8 +151,8 @@ function press(key) {
 
 // ------------------------------------------------------------------- wire
 
-function handle(msg) {
-  const { id, cmd, args = {} } = msg;
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  const { cmd, args = {} } = msg || {};
   try {
     let data = null;
     if (cmd === 'snapshot') data = snapshot();
@@ -172,27 +163,9 @@ function handle(msg) {
     else if (cmd === 'goto') location.assign(args.url);
     else if (cmd === 'ping') data = { url: location.href };
     else throw new Error(`unknown cmd ${cmd}`);
-    ws?.send(JSON.stringify({ id, ok: true, data }));
+    sendResponse({ ok: true, data });
   } catch (e) {
-    ws?.send(JSON.stringify({ id, ok: false, error: String(e.message || e).slice(0, 200) }));
+    sendResponse({ ok: false, error: String(e.message || e).slice(0, 200) });
   }
-}
-
-function connect() {
-  ws = new WebSocket(TONY_WS);
-  ws.onopen = () => {
-    retryMs = 1000;
-    ws.send(JSON.stringify({ event: 'hello', url: location.href, title: document.title }));
-  };
-  ws.onmessage = (ev) => {
-    try { handle(JSON.parse(ev.data)); } catch { /* ignore malformed */ }
-  };
-  ws.onclose = () => {
-    ws = null;
-    setTimeout(connect, retryMs);
-    retryMs = Math.min(retryMs * 2, 15000);
-  };
-  ws.onerror = () => ws?.close();
-}
-
-connect();
+  return false;   // responses above are synchronous
+});
