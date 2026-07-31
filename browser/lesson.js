@@ -111,13 +111,16 @@ class Lesson {
       if (out.say) this.speak(out.say);
       this.transcript?.log('pilot-turn', { learner: learnerText, say: out.say, tool: out.tool?.name ?? null, tookMs: Date.now() - t0 });
 
-      if (!out.tool || out.tool.name === 'snapshot') return;
+      if (!out.tool) return;
 
       const res = await this.execute(out.tool);
 
       // Confirm turn: fresh snapshot, speech + look-only tools. This is where
       // "say plainly what changed; if nothing changed, say so" happens.
-      if (ACT_TOOLS.includes(out.tool.name) || !res.ok) {
+      // snapshot/screenshot requests get one too — "let me take a fresh look"
+      // must be followed by the report, not by silence (observed live).
+      // Highlight skips it: the narration already accompanied the outline.
+      if (ACT_TOOLS.includes(out.tool.name) || ['snapshot', 'screenshot'].includes(out.tool.name) || !res.ok) {
         this.push('user', await this.userPayload(null,
           res.ok ? `action_executed: ${out.tool.name}` : `action_failed: ${out.tool.name} — ${res.error}`));
         const confirm = await this.model();
