@@ -16,6 +16,7 @@ const els = {
 let anam = null;
 let activeStream = null;   // in-flight createTalkMessageStream, if any
 let reconnectTimer = null;
+let connectWatchdog = null;
 
 // Single source of truth for the mic. We create the client with
 // disableInputAudio: true, and in that mode the SDK logs "Audio state will not
@@ -100,9 +101,22 @@ async function connect() {
   anam = createClient(res.token);
   inputAudioEnabled = true;
 
+  // Connect watchdog. The only retry path used to hang off CONNECTION_CLOSED,
+  // so a session that never ESTABLISHED (observed live: token minted, then
+  // silence — no SESSION_READY, no WebRTC traffic) left Tony black forever.
+  // If ready doesn't arrive in time, tear down and start over.
+  clearTimeout(connectWatchdog);
+  connectWatchdog = setTimeout(() => {
+    window.tony.note?.('connect-timeout');
+    try { anam?.stopStreaming?.(); } catch { /* never established */ }
+    anam = null;
+    connect().catch(() => {});
+  }, 15000);
+
   // THE fix for silent Tony: the SDK emits the audio track but never sinks it.
   const audioEl = document.getElementById('persona-audio');
   anam.addListener(AnamEvent.AUDIO_STREAM_STARTED, (stream) => {
+    window.tony.note?.('audio-started');
     audioEl.srcObject = stream;
     // autoplay of a MediaStream with audio can be blocked until a user gesture;
     // play() may reject, so retry on the next interaction.
@@ -113,6 +127,8 @@ async function connect() {
   });
 
   anam.addListener(AnamEvent.SESSION_READY, () => {
+    clearTimeout(connectWatchdog);
+    window.tony.note?.('session-ready');
     setState('observing');
     reportMic();
   });
@@ -135,9 +151,11 @@ async function connect() {
   // Session tokens expire after 3600s (measured). A learning session outlives
   // that easily, so reconnect rather than going silently dormant mid-lesson.
   anam.addListener(AnamEvent.CONNECTION_CLOSED, () => {
+    window.tony.note?.('connection-closed');
     setState('idle');
     clearTimeout(reconnectTimer);
     reconnectTimer = setTimeout(() => {
+      window.tony.note?.('reconnecting');
       try { anam?.stopStreaming?.(); } catch { /* already down */ }
       anam = null;
       connect().catch(() => {});
@@ -147,6 +165,7 @@ async function connect() {
   // Learner talking over Tony is the same signal as the deadman switch:
   // any input means stop. The persona has a scripted beat for it.
   anam.addListener(AnamEvent.TALK_STREAM_INTERRUPTED, () => {
+    window.tony.note?.('talk-interrupted');
     activeStream = null;
     window.tony.learnerInput();
     setState('observing');
@@ -256,16 +275,9 @@ window.tony.on('observer-error', (e) => {
   if (e.fatal) notice(`Observer stopped: ${e.message}`);
 });
 
-// --------------------------------------------------------------- controls
-
-document.querySelectorAll('[data-mode]').forEach((btn) => {
-  btn.addEventListener('click', async () => {
-    const mode = await window.tony.setMode(btn.dataset.mode);
-    document.querySelectorAll('[data-mode]').forEach((b) => {
-      b.setAttribute('aria-pressed', String(b.dataset.mode === mode));
-    });
-  });
-});
+// Mode buttons were removed with the compact circular card; the mode defaults
+// to walk_through and remains settable via the set-mode IPC when a control
+// surface returns (tray menu, voice command, ...).
 
 // Deadman: any keypress or click anywhere in the overlay aborts driving.
 // The main process also watches globally; this covers the focused window.

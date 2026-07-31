@@ -8,42 +8,29 @@
  * at the 270ms floor — the same speed as a cache hit. We were paying 480ms of
  * inference to say something we already knew we were going to say.
  *
+ * WHY THEY ARE NO LONGER SCREEN-FLAVORED:
+ * v1 keyed lines to the screen ("Looking at those inbound rules") to sound
+ * grounded. Live sessions proved the opposite: the line fires BEFORE any
+ * reading happens, so it claims an observation that hasn't occurred — and
+ * when the screen key misidentifies, it narrates the wrong page entirely.
+ * Fake specificity reads as robotic; an honest beat in Tony's voice does not.
+ *
  * Rules for adding lines:
- *  - 8 words maximum. Longer bridges outlive the wait they cover.
- *  - Must reference something visible, or it reads as empty filler.
+ *  - 5 words maximum. The bridge covers 5-20s of thinking; it is a beat,
+ *    not a sentence.
+ *  - Claim NOTHING: no "reading", no "checking", nothing that asserts an
+ *    action is underway on a specific thing.
  *  - No "Great question", no apologies, no "let me think about that".
- *  - Rotate: repetition is what kills a character (measured — v1 of the prompt
- *    told the same anecdote 4/4 times and it was instantly grating).
+ *  - Rotate: repetition is what kills a character.
  */
 
-const POOL = {
-  'ec2:launch_wizard': [
-    'Reading your launch config.',
-    'Checking what this wizard has so far.',
-    'Looking at your instance settings.',
-  ],
-  'ec2:security_groups': [
-    'Reading your security group rules.',
-    'Checking who can reach this box.',
-    'Looking at those inbound rules.',
-  ],
-  's3:create_bucket': [
-    'Reading your bucket settings.',
-    'Checking the access config.',
-  ],
-  'iam:policy_editor': [
-    'Parsing that policy document.',
-    'Reading what this policy actually grants.',
-  ],
-  'vpc:listing': ['Looking at your network layout.'],
-  'route53:listing': ['Checking your DNS records.'],
-  'cloudfront:listing': ['Reading your distribution settings.'],
-};
-
-const GENERIC = [
-  'Reading the screen.',
-  'Checking what you have here.',
-  'One second, looking.',
+const POOL = [
+  'On it.',
+  'Sec.',
+  'Gimme a beat.',
+  'Hold on.',
+  'Alright.',
+  'Hmm.',
 ];
 
 /** Per-session rotation state so the same bridge never lands twice in a row. */
@@ -51,15 +38,14 @@ const cursors = new Map();
 
 /**
  * @param {string} sessionId
- * @param {string} screenKey  e.g. "ec2:launch_wizard"
- * @returns {string} a bridge line, 8 words or fewer
+ * @param {string} screenKey  kept in the signature for rotation keying
+ * @returns {string} a bridge line, 5 words or fewer
  */
 function pickBridge(sessionId, screenKey) {
-  const pool = POOL[screenKey] || GENERIC;
   const k = `${sessionId}:${screenKey}`;
   const i = (cursors.get(k) ?? -1) + 1;
   cursors.set(k, i);
-  return pool[i % pool.length];
+  return POOL[i % POOL.length];
 }
 
 function clearSession(sessionId) {
@@ -68,4 +54,4 @@ function clearSession(sessionId) {
   }
 }
 
-module.exports = { pickBridge, clearSession, POOL, GENERIC };
+module.exports = { pickBridge, clearSession, POOL };

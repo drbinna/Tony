@@ -72,6 +72,15 @@ VOICE:
 
 MODES: just_fix_it = give the answer or do it, <=25 words. walk_through = point at the next step, learner clicks, <=45 words. earn_it = ask a guiding question INSTEAD of answering, <=35 words, never state the answer inside the question.
 
+DIRECT COMMANDS OVERRIDE MODE: when the learner's message tells you to act — "click X", "type X", "open X", "do it", "go ahead", "you do it" — and account_kind is sandbox, return the matching click/type/scroll action THIS TURN. Do not point and wait, do not ask for consent they already gave. Point instead ONLY if the named element is not in the tree.
+
+REFERENT RULE: a bare "it"/"that"/"this one" in the learner's message means session.last_pointed — the element you most recently pointed at or acted on — unless they name something else. Do not substitute an element from an earlier topic.
+
+DRIVE FEEDBACK: session.last_drive reports your most recent cursor action and its outcome. Read it before acting again.
+- ok true AND screen_changed_since true: the action took. Never re-announce it; describe what changed and move on.
+- ok true AND screen_changed_since false: the click likely did not land. Say that plainly, then try a DIFFERENT approach — a different element, or ask the learner what they see. Do not repeat the identical click while claiming success.
+- deadman true: the learner's own input stopped you. Acknowledge it and hand them the wheel.
+
 SAFETY — READ CAREFULLY:
 - session.account_kind == "sandbox": you may return click/type/scroll with state "driving".
 - session.account_kind == "own_account": you may NOT return state "driving". Return action type "point" at the element you would act on, describe the change in plain resource terms, and set needs_confirmation true. Emitting a click or state "driving" in own_account is a safety violation.
@@ -97,6 +106,22 @@ function buildSuffix({ session, event, screen }) {
       triggers_fired: session.triggersFired,
       scars_used: session.scarsUsed,
       quest: session.quest ?? null,
+      // Anchor for the learner's bare "it"/"that": the last element Tony
+      // pointed at or drove. Ids are per-capture, so the label is the anchor.
+      last_pointed: session.lastPointed ?? null,
+      last_drive: session.lastDrive ? {
+        type: session.lastDrive.type,
+        label: session.lastDrive.label,
+        ok: session.lastDrive.ok,
+        deadman: session.lastDrive.deadman,
+        error: session.lastDrive.error,
+        seconds_ago: Math.round((Date.now() - session.lastDrive.at) / 1000),
+        // Cheap change detector: same screen key AND same tree size as the
+        // moment of the drive usually means the click did not take.
+        screen_changed_since:
+          (screen.screen?.key ?? '') !== session.lastDrive.screenKey
+          || (screen.tree?.length ?? 0) !== session.lastDrive.treeNodes,
+      } : null,
     },
     event,
     screen: {

@@ -98,6 +98,24 @@ permission is missing.
 
 Hotkey: **⌘⇧Space** — ask about the current screen.
 
+## Session transcripts (debugging)
+
+Every run writes an append-only JSONL transcript to `transcripts/` (gitignored;
+override the location with `TONY_TRANSCRIPT_DIR`). It captures the whole
+conversation with timings: learner utterances, cache-vs-bridge dispatch,
+follow-up latency, precompute results (including raw model output on parse
+failures), pointer resolution, deadman aborts, and Anam connection events.
+Each answer also snapshots cache stats, so **every session measures the cache
+hit rate** — the open question above.
+
+```bash
+npm run transcript                    # pretty-print the newest session
+npm run transcript -- path/to.jsonl   # or a specific one
+```
+
+Writes are synchronous appends, so a crash keeps everything logged up to the
+crash — which is exactly when you want the transcript.
+
 ## Design decisions worth knowing
 
 **The fast path emits plain text, never JSON.** You cannot speak a partial JSON
@@ -171,8 +189,9 @@ SDK source; the quickstart does not mention it.
 ## Known gaps
 
 - **Cache hit rate is unmeasured.** This is THE open question. At 100% Tony
-  feels human; at 40% most interactions take the bridge path. `cacheReport()`
-  is wired to the renderer — instrument it in the first real session.
+  feels human; at 40% most interactions take the bridge path. Instrumentation
+  now exists — every session transcript snapshots cache stats per exchange
+  (`npm run transcript`) — but no real session has been measured yet.
 - **Anam overhead of 270ms assumes 120ms TTS.** That is an estimate. Replace it
   with a live-session measurement before trusting any number here.
 - **The goblin question is open, and now narrower.** The account's library was
@@ -194,8 +213,13 @@ SDK source; the quickstart does not mention it.
   and k3-fast grounds at 0-2px on this fixture, but the screenshot capture path
   is not built. The AX tree covers the mock console completely; real consoles
   with canvas regions will need it.
-- **Input synthesis is not implemented.** `driving` state, chrome, and deadman
-  switch all exist; the actual CGEvent synthesis does not. Sandbox-only when it
-  lands.
+- ~~Input synthesis is not implemented.~~ **IMPLEMENTED (scope B).**
+  `observer/drive.swift` synthesizes CGEvents (glide + click, unicode typing,
+  scroll), spawned per-gesture by `pointer/driver.js`. Sandbox-gated by
+  `sanitizeAction` exactly as before — own_account actions still demote to a
+  point. The deadman lives at the lowest level: every synthesized event is
+  tagged in eventSourceUserData, and a listen-only event tap inside the helper
+  exits(2) on ANY untagged human input, aborting the gesture mid-flight.
+  abortDriving() also SIGKILLs the helper from the main-process side.
 - **macOS only.** The AX tree is the primary sense; Windows would need a
   parallel UIA reader.

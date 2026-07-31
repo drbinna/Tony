@@ -16,8 +16,19 @@
 import AppKit
 import ApplicationServices
 
-let MAX_DEPTH = 22
+// Depth 22 silently dropped the AWS console's security-group table: Cloudscape
+// nests data tables far deeper than the page chrome, so Tony saw sidebar and
+// footer but no rows (147 nodes, "untruncated" — measured live, 2026-07-30).
+// MAX_NODES stays the real size budget; depth is only a runaway-recursion stop.
+let MAX_DEPTH = 45
 let MAX_NODES = 400
+// Every AX attribute read is an IPC round-trip. MAX_NODES only counts KEPT
+// nodes, so a page with vast uninteresting scaffolding (measured: the X feed)
+// can visit tens of thousands of elements, blow the observer's 4s exec budget,
+// and fail the whole tick. Cap total visits: a partial tree beats no tree.
+let MAX_VISITS = 6000
+var visits = 0
+var depthClipped = false
 
 struct Node: Encodable {
     let id: String
@@ -74,7 +85,10 @@ func interesting(_ role: String, _ label: String, _ value: String) -> Bool {
 }
 
 func walk(_ el: AXUIElement, depth: Int) {
-    if depth > MAX_DEPTH || nodes.count >= MAX_NODES { return }
+    if depth > MAX_DEPTH { depthClipped = true; return }
+    if nodes.count >= MAX_NODES { return }
+    visits += 1
+    if visits > MAX_VISITS { return }
 
     let role = str(el, kAXRoleAttribute as String)
     let label = [
@@ -171,6 +185,7 @@ struct Payload: Encodable {
     let has_web_content: Bool
     let captured_at: Double
     let truncated: Bool
+    let depth_clipped: Bool
     let a11y_tree: [Node]
 }
 
@@ -185,6 +200,7 @@ let payload = Payload(
     has_web_content: hasWebContent,
     captured_at: Date().timeIntervalSince1970,
     truncated: nodes.count >= MAX_NODES,
+    depth_clipped: depthClipped,
     a11y_tree: nodes
 )
 

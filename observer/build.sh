@@ -17,3 +17,7 @@ fi
 swiftc -O -framework AppKit -framework ApplicationServices \
   -o ax-dump ax-dump.swift
 echo "observer: built ./ax-dump"
+
+swiftc -O -framework AppKit -framework ApplicationServices \
+  -o drive drive.swift
+echo "observer: built ./drive"

@@ -23,11 +23,12 @@ const SLOW_MODEL = 'accounts/fireworks/routers/kimi-k3-fast';
 const FAST_MODEL = 'accounts/fireworks/models/deepseek-v4-flash';
 
 class Brain {
-  constructor({ fireworksKey, anamKey, personaConfig, log = console }) {
+  constructor({ fireworksKey, anamKey, personaConfig, log = console, transcript = null }) {
     this.fireworksKey = fireworksKey;
     this.anamKey = anamKey;
     this.personaConfig = personaConfig;
     this.log = log;
+    this.transcript = transcript;
     this.cache = new PrecomputeCache();
     this.session = {
       id: `s_${Date.now()}`,
@@ -105,10 +106,29 @@ class Brain {
       event: { kind: 'precompute', payload: intent },
       screen: frame,
     });
-    const raw = await this.callModel({
-      model: SLOW_MODEL, system: SLOW_SYS, user, maxTokens: 8000,
-    });
+    const t0 = Date.now();
+    let raw;
+    try {
+      raw = await this.callModel({
+        model: SLOW_MODEL, system: SLOW_SYS, user, maxTokens: 8000,
+      });
+    } catch (err) {
+      this.transcript?.log('precompute', {
+        screen: frame.screen.key, intent, tookMs: Date.now() - t0, ok: false, error: err.message,
+      });
+      throw err;   // cache.warm counts it as warmFailed
+    }
     const obj = Brain.parseJson(raw);
+    // Three outcomes, not two: parsed-with-content, parsed-but-declined
+    // ("say": null — the model chose silence, e.g. no concern worth raising),
+    // and genuinely unparseable. Only the last is a failure.
+    const declined = !!(obj && 'say' in obj && !obj.say);
+    this.transcript?.log('precompute', {
+      screen: frame.screen.key, intent, tookMs: Date.now() - t0,
+      ok: !!obj, ...(declined ? { declined: true } : {}),
+      // On a parse failure the raw output is the whole diagnosis; keep a slice.
+      ...(obj ? {} : { raw: raw.slice(0, 400) }),
+    });
     if (!obj || !obj.say) return null;
     return { text: obj.say, action: obj.action ?? { type: 'none' }, meta: obj };
   }
@@ -155,9 +175,12 @@ class Brain {
     // it. The bridge buys the 5-20s the slow brain needs.
     const isSpokenQuestion = intent === 'learner_question';
     const bridge = pickBridge(this.session.id, frame.screen.key);
+    // followUp resolves to { text, action } | null on BOTH paths. The slow
+    // brain's action must survive to dispatch — dropping it here was the bug
+    // where Tony said "cursor's pointing at it" and no ring ever appeared.
     const answerer = isSpokenQuestion
       ? this.answerQuestion(frame, question)
-      : this.speakFast(frame, question);
+      : this.speakFast(frame, question).then((text) => (text ? { text } : null));
 
     const followUp = answerer.catch((err) => {
       this.log.warn?.('answer path failed:', err.message);
@@ -168,7 +191,8 @@ class Brain {
   }
 
   /** Answer a free-form spoken question as Tony, with console context. Uses the
-   *  slow brain (better reasoning) and returns just the spoken line. */
+   *  slow brain (better reasoning); returns { text, action } so a spoken answer
+   *  can ring the pointer too. */
   async answerQuestion(frame, question) {
     const user = buildSuffix({
       session: this.session,
@@ -179,7 +203,12 @@ class Brain {
       model: SLOW_MODEL, system: SLOW_SYS, user, maxTokens: 8000,
     });
     const obj = Brain.parseJson(raw);
-    return obj?.say || null;
+    if (!obj?.say) {
+      // A silent Tony after a bridge is undebuggable without the raw output.
+      this.transcript?.log('parse-failed', { where: 'answerQuestion', raw: raw.slice(0, 400) });
+      return null;
+    }
+    return { text: obj.say, action: obj.action ?? { type: 'none' } };
   }
 
   // --------------------------------------------------------- session state

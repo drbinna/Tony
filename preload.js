@@ -9,7 +9,7 @@ contextBridge.exposeInMainWorld('tony', {
   // main -> renderer
   on: (channel, fn) => {
     const allowed = [
-      'speak', 'speak-followup', 'state', 'screen',
+      'speak', 'speak-followup', 'state', 'screen', 'hotkey',
       'permissions', 'observer-error', 'deadman-abort', 'notice',
     ];
     if (!allowed.includes(channel)) return () => {};
@@ -25,5 +25,8 @@ contextBridge.exposeInMainWorld('tony', {
   cacheReport: () => ipcRenderer.invoke('cache-report'),
   learnerInput: () => ipcRenderer.send('learner-input'),
   heard: (text) => ipcRenderer.send('heard', text),
+  // Anam lifecycle breadcrumbs for the session transcript. Event names only —
+  // main whitelists them; no payload crosses the bridge.
+  note: (event) => ipcRenderer.send('transcript-note', String(event)),
   openAccessibilitySettings: () => ipcRenderer.send('open-accessibility-settings'),
 });

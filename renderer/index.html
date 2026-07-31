@@ -19,7 +19,7 @@
     --bone:    #E8EDEA;
 
     --ring: var(--slate);
-    --ring-w: 1px;
+    --ring-w: 2px;
     --glow: transparent;
 
     --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
@@ -38,21 +38,31 @@
     cursor: default;
   }
 
-  /* the whole card is the drag handle, minus interactive controls */
+  /* No card chrome anymore: the app is a floating circle plus small bubbles. */
   #card {
     height: 100%;
     display: flex;
     flex-direction: column;
-    background: var(--shell);
-    border: var(--ring-w) solid var(--ring);
-    border-radius: 14px;
-    box-shadow: 0 18px 48px rgba(0,0,0,.55), 0 0 0 6px var(--glow);
-    overflow: hidden;
-    transition: border-color .18s ease, box-shadow .18s ease, border-width .18s ease;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 6px;
   }
 
-  /* ── state ring: the signature element ───────────────────────────────── */
-  #stage { position: relative; background: var(--void); aspect-ratio: 1 / 1; }
+  /* ── the avatar circle: the state ring IS its border ─────────────────── */
+  #stage {
+    position: relative;
+    width: 148px; height: 148px;
+    flex: none;
+    border-radius: 50%;
+    overflow: hidden;
+    background: var(--void);
+    border: var(--ring-w) solid var(--ring);
+    box-shadow: 0 14px 36px rgba(0,0,0,.5), 0 0 0 6px var(--glow);
+    transition: border-color .18s ease, box-shadow .18s ease;
+    /* The circle is the drag handle — there are no child controls left to
+       swallow clicks in this frameless transparent window. */
+    -webkit-app-region: drag;
+  }
   #stage video { width: 100%; height: 100%; object-fit: cover; display: block; }
 
   #scan {
@@ -63,61 +73,61 @@
   body[data-state="thinking"] #scan { opacity: 1; animation: sweep 1.4s linear infinite; }
   @keyframes sweep { from { transform: translateY(-100%); } to { transform: translateY(100%); } }
 
-  /* ── status readout: an instrument, so it's set in mono ──────────────── */
+  /* ── status pill: an instrument, so it's set in mono ─────────────────── */
   #status {
-    display: flex; align-items: center; gap: 8px;
-    padding: 9px 12px;
-    font-family: var(--mono); font-size: 10px; letter-spacing: .08em;
+    display: flex; align-items: center; gap: 7px;
+    max-width: 100%;
+    padding: 5px 12px;
+    background: var(--shell);
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 999px;
+    font-family: var(--mono); font-size: 9px; letter-spacing: .08em;
     text-transform: uppercase; color: var(--slate);
-    border-top: 1px solid rgba(255,255,255,.06);
-    /* the ONLY drag handle. Making the whole card draggable swallows clicks on
-       child controls in transparent frameless windows. */
+    white-space: nowrap;
     -webkit-app-region: drag;
   }
   #dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ring); flex: none; }
   body[data-state="observing"] #dot { animation: breathe 3s ease-in-out infinite; }
   @keyframes breathe { 0%,100% { opacity: .35; } 50% { opacity: 1; } }
-  #detail { margin-left: auto; color: rgba(232,237,234,.4); text-transform: none; letter-spacing: 0; }
+  #detail { color: rgba(232,237,234,.4); text-transform: none; letter-spacing: 0; overflow: hidden; text-overflow: ellipsis; }
+  #detail:empty { display: none; }
   #detail[data-net="weak"] { color: var(--ember); }
   /* mic state is a promise the UI makes; it must be readable at a glance */
   #mic { color: rgba(232,237,234,.35); }
   #mic[data-live="true"] { color: var(--ember); font-weight: 700; }
 
-  /* ── speech ──────────────────────────────────────────────────────────── */
+  /* ── speech bubble: present only when Tony has something to say ──────── */
   #speech {
-    flex: 1; padding: 12px 14px; font-size: 13.5px; line-height: 1.45;
-    overflow-y: auto; color: var(--bone);
+    width: 100%;
+    padding: 9px 12px;
+    background: var(--shell);
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 12px;
+    font-size: 12px; line-height: 1.45;
+    max-height: 108px; overflow-y: auto;
+    color: var(--bone);
+  }
+  #speech:empty {
+    background: transparent; border-color: transparent;
+    text-align: center; padding: 2px;
   }
   #speech:empty::after {
-    content: "^⌥Space to ask"; color: rgba(232,237,234,.28); font-size: 12px;
+    content: "^⌥Space to ask"; color: rgba(232,237,234,.25); font-size: 10px;
+    font-family: var(--mono); letter-spacing: .06em;
   }
   body[data-ask-key] #speech:empty::after { content: attr(data-ask-key) " to ask"; }
   #speech .bridge { color: var(--slate); font-style: italic; }
 
-  /* ── controls ────────────────────────────────────────────────────────── */
-  #controls {
-    display: flex; gap: 6px; padding: 8px 10px 10px;
-    border-top: 1px solid rgba(255,255,255,.06);
-  }
-  button {
-    flex: 1; padding: 6px 4px; font-family: var(--mono); font-size: 9.5px;
-    letter-spacing: .06em; text-transform: uppercase;
-    background: transparent; color: var(--slate);
-    border: 1px solid rgba(255,255,255,.10); border-radius: 7px; cursor: pointer;
-    transition: color .15s, border-color .15s;
-  }
-  button:hover { color: var(--bone); border-color: rgba(255,255,255,.24); }
-  button[aria-pressed="true"] { color: var(--void); background: var(--goblin); border-color: var(--goblin); }
-  button:focus-visible { outline: 2px solid var(--goblin); outline-offset: 2px; }
-
   /* ── driving: the one loud moment ────────────────────────────────────── */
   body[data-state="driving"] {
-    --ring: var(--ember); --ring-w: 2px; --glow: rgba(255,138,61,.16);
+    --ring: var(--ember); --ring-w: 3px; --glow: rgba(255,138,61,.16);
   }
   #wheel {
     display: none;
-    padding: 7px 12px; background: var(--ember); color: #1A0D00;
-    font-family: var(--mono); font-size: 10px; font-weight: 700;
+    width: 100%;
+    padding: 6px 10px; background: var(--ember); color: #1A0D00;
+    border-radius: 999px;
+    font-family: var(--mono); font-size: 9px; font-weight: 700;
     letter-spacing: .1em; text-transform: uppercase; text-align: center;
   }
   body[data-state="driving"] #wheel { display: block; }
@@ -129,8 +139,10 @@
 
   /* ── blocking notice ─────────────────────────────────────────────────── */
   #notice {
-    display: none; padding: 12px 14px; background: rgba(255,138,61,.10);
-    border-top: 1px solid rgba(255,138,61,.3); font-size: 12px; line-height: 1.4;
+    display: none; width: 100%; padding: 10px 12px;
+    background: rgba(20,14,8,.96);
+    border: 1px solid rgba(255,138,61,.35); border-radius: 12px;
+    font-size: 11.5px; line-height: 1.4;
     -webkit-app-region: no-drag;
   }
   #notice.show { display: block; }
@@ -138,14 +150,12 @@
 
   @media (prefers-reduced-motion: reduce) {
     #scan, #dot { animation: none !important; }
-    #card { transition: none; }
+    #stage { transition: none; }
   }
 </style>
 </head>
 <body data-state="idle">
   <div id="card">
-    <div id="wheel">Tony has the wheel — press any key to stop</div>
-
     <div id="stage">
       <video id="persona" autoplay playsinline></video>
       <!-- The SDK's streamToVideoElement attaches the VIDEO track to the video
@@ -155,6 +165,8 @@
       <audio id="persona-audio" autoplay></audio>
       <div id="scan"></div>
     </div>
+
+    <div id="wheel">Tony has the wheel — any key stops</div>
 
     <div id="status">
       <span id="dot"></span>
@@ -166,12 +178,6 @@
     <div id="speech"></div>
 
     <div id="notice"></div>
-
-    <div id="controls">
-      <button data-mode="just_fix_it">Fix it</button>
-      <button data-mode="walk_through" aria-pressed="true">Walk me</button>
-      <button data-mode="earn_it">Earn it</button>
-    </div>
   </div>
 
   <!-- bundle.js is generated by `npm run build:renderer` (esbuild).

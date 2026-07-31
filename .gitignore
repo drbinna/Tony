@@ -3,8 +3,9 @@
 .env.local
 .env.*.local
 
-# Compiled AX helper (built per-machine by observer/build.sh)
+# Compiled helpers (built per-machine by observer/build.sh)
 observer/ax-dump
+observer/drive
 observer/*.dSYM
 
 # Generated renderer bundle (npm run build:renderer)
@@ -21,3 +22,6 @@ out/
 
 # macOS
 .DS_Store
+
+# Session transcripts (debugging; may contain spoken conversation)
+transcripts/

@@ -59,9 +59,26 @@ function identifyScreen({ frontmost_app, window_title, document_url, a11y_tree }
     /route\s?53/.test(title) ? 'route53' :
     /console home/.test(title) || /\/console\/home/.test(url) ? 'home' : 'unknown';
 
+  // URL fragment FIRST. Blob sniffing sticks: the Load Balancers page has a
+  // "Security group" COLUMN, so text matching kept every EC2 page identified
+  // as security_groups (measured live — bridges and context were wrong for a
+  // whole session). The console's own #Fragment names the page reliably.
+  const FRAG_PAGES = {
+    launchinstances: 'launch_wizard', launchinstancewizard: 'launch_wizard',
+    securitygroups: 'security_groups', securitygroup: 'security_groups',
+    loadbalancers: 'load_balancers', loadbalancer: 'load_balancers',
+    targetgroups: 'target_groups',
+    keypairs: 'key_pairs',
+    instances: 'instances',
+    volumes: 'volumes',
+    images: 'amis', amis: 'amis',
+  };
+  const frag = (url.match(/#\/?([a-z]+)/i)?.[1] || '').toLowerCase();
+
   const page =
-    /launch an instance/.test(title) || /#launchinstance/i.test(url) ? 'launch_wizard' :
-    /security group/.test(blob) || /#securitygroup/i.test(url) ? 'security_groups' :
+    FRAG_PAGES[frag] ? FRAG_PAGES[frag] :
+    /launch an instance/.test(title) ? 'launch_wizard' :
+    /security group/.test(blob) ? 'security_groups' :
     /create bucket/.test(title) ? 'create_bucket' :
     /policy/.test(blob) && service === 'iam' ? 'policy_editor' :
     service === 'home' ? 'home' : 'listing';
@@ -207,6 +224,7 @@ class Observer extends EventEmitter {
         windowTitle: payload.window_title,
         documentUrl: payload.document_url || '',
         truncated: payload.truncated,
+        depthClipped: !!payload.depth_clipped,
         at: Date.now(),
       };
       this.latest = frame;

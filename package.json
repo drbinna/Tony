@@ -9,6 +9,7 @@
     "start": "npm run build && electron .",
     "start:nobuild": "electron .",
     "doctor": "node test/doctor.js",
+    "transcript": "node test/transcript-cat.js",
     "build:renderer": "esbuild renderer/renderer.js --bundle --format=esm --platform=browser --outfile=renderer/bundle.js",
     "build": "npm run build:observer && npm run build:renderer",
     "watch:renderer": "esbuild renderer/renderer.js --bundle --format=esm --platform=browser --outfile=renderer/bundle.js --watch"
