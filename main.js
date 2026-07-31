@@ -312,6 +312,15 @@ function ringFromAction(rawAction, askFrame) {
   if (!scopeFrame?.screen?.aws) {
     transcript?.log('scope-refused', { action: rawAction?.type, screen: scopeFrame?.screen?.key ?? 'none' });
     console.log(`[scope] refused ${rawAction?.type} on non-AWS screen ${scopeFrame?.screen?.key ?? 'none'}`);
+    // Feed the refusal into the drive-feedback loop, or Tony narrates an
+    // action the wall silently blocked (measured live: "clicking it now"
+    // over a scope-refused). Next turn he explains instead of gaslighting.
+    brain.session.lastDrive = {
+      type: rawAction?.type ?? 'unknown', label: '', ok: false, deadman: false,
+      error: 'blocked: not the AWS console — Tony only acts on AWS',
+      screenKey: scopeFrame?.screen?.key ?? 'none',
+      treeNodes: (scopeFrame?.tree || []).length, at: Date.now(),
+    };
     return;
   }
   const action = brain.sanitizeAction(rawAction);

@@ -31,7 +31,11 @@ function identifyScreen({ frontmost_app, window_title, document_url, a11y_tree }
   // Titles vary per service and per page; the hostname does not.
   const isConsoleUrl = /(^|\/\/)([a-z0-9-]+\.)?console\.aws\.amazon\.com/.test(url);
 
-  const SERVICE_TOKEN = /\b(ec2|s3|iam|vpc|rds|lambda|cloudfront|route\s?53|cloudwatch|dynamodb|eks|ecs)\b/;
+  // Chrome intermittently withholds AXDocument/AXURL, so this title fallback
+  // must know every service a learner might sit on. Bedrock's absence made the
+  // real Bedrock console read as off:Google Chrome whenever the URL dropped —
+  // and the AWS-only scope wall then blocked legitimate clicks (measured live).
+  const SERVICE_TOKEN = /\b(ec2|s3|iam|vpc|rds|lambda|cloudfront|route\s?53|cloudwatch|dynamodb|eks|ecs|bedrock|sagemaker|cloudformation|sqs|sns|ecr|api\s?gateway|amplify|athena|glue)\b/;
   const REGION = /\b(us|eu|ap|sa|ca|me|af)-(east|west|north|south|central|northeast|southeast|northwest|southwest)-\d\b/;
 
   // Title fallback for browsers that do not expose AXDocument/AXURL. Kept
@@ -57,6 +61,8 @@ function identifyScreen({ frontmost_app, window_title, document_url, a11y_tree }
     /vpc/.test(title) ? 'vpc' :
     /cloudfront/.test(title) ? 'cloudfront' :
     /route\s?53/.test(title) ? 'route53' :
+    /bedrock/.test(title) ? 'bedrock' :
+    /cloudwatch/.test(title) ? 'cloudwatch' :
     /console home/.test(title) || /\/console\/home/.test(url) ? 'home' : 'unknown';
 
   // URL fragment FIRST. Blob sniffing sticks: the Load Balancers page has a
