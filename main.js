@@ -728,9 +728,20 @@ ipcMain.on('open-accessibility-settings', () => {
   shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility');
 });
 
-app.on('will-quit', () => {
+let quitting = false;
+app.on('will-quit', (e) => {
   transcript?.log('session-end', { cache: brain ? brain.cache.report() : null });
-  pilot?.close().catch(() => {});
   globalShortcut.unregisterAll();
+  // The lesson browser must close GRACEFULLY or Chrome never flushes the
+  // profile's cookies and the learner's console login is lost on every
+  // restart (observed live: sign-in page after relaunch despite the
+  // persistent profile). Block the quit once, await the close, then exit.
+  if (pilot && !quitting) {
+    quitting = true;
+    e.preventDefault();
+    pilot.close()
+      .catch(() => {})
+      .finally(() => app.exit(0));
+  }
 });
 app.on('window-all-closed', () => app.quit());
