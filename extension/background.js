@@ -70,5 +70,20 @@ function scheduleRetry() {
 }
 
 connect();
-// Also reconnect on browser startup / extension reload.
+// MV3 lifecycle: Chrome kills an idle worker ~30s after its socket retries
+// fail, and nothing revives it on its own. Three wake paths:
+// 1. Browser startup / extension reload.
 chrome.runtime.onStartup?.addListener(() => { if (!ws) connect(); });
+// 2. A console page loading pings us awake (content script sends 'wake').
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.event === 'wake') {
+    if (!ws || ws.readyState > 1) connect();
+    sendResponse({ ok: true });
+  }
+  return false;
+});
+// 3. A standing alarm re-checks every 30s even with no tabs loading.
+chrome.alarms.create('tony-reconnect', { periodInMinutes: 0.5 });
+chrome.alarms.onAlarm.addListener((a) => {
+  if (a.name === 'tony-reconnect' && (!ws || ws.readyState > 1)) connect();
+});

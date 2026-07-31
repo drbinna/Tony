@@ -169,3 +169,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   return false;   // responses above are synchronous
 });
+
+// Wake the background worker (it may have been reaped while the Tony app was
+// down) so it reconnects the moment a console page loads.
+try { chrome.runtime.sendMessage({ event: 'wake' }, () => chrome.runtime.lastError); } catch { /* ignore */ }
