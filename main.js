@@ -304,6 +304,16 @@ function dispatchSpeech(res, opts = {}) {
  * the ask), fall back to the live frame before declaring NO RING.
  */
 function ringFromAction(rawAction, askFrame) {
+  // AWS-only, enforced in code: Tony's ring and hands exist for the console
+  // and nothing else. The prompt says the same thing; that is the seatbelt,
+  // this is the wall. (Measured live: pre-gate Tony scrolled an X feed on
+  // request.)
+  const scopeFrame = askFrame ?? observer.latest;
+  if (!scopeFrame?.screen?.aws) {
+    transcript?.log('scope-refused', { action: rawAction?.type, screen: scopeFrame?.screen?.key ?? 'none' });
+    console.log(`[scope] refused ${rawAction?.type} on non-AWS screen ${scopeFrame?.screen?.key ?? 'none'}`);
+    return;
+  }
   const action = brain.sanitizeAction(rawAction);
   // Mutating actions survive sanitizeAction ONLY on sandbox accounts — on
   // own_account they arrive here already demoted to a point. This is scope B:
