@@ -115,6 +115,13 @@ class Lesson {
 
       const res = await this.execute(out.tool);
 
+      // The console SPA needs a beat to render after navigation — confirming
+      // instantly reads the OLD page and Tony reports "nothing changed" on
+      // clicks that worked (observed live twice). Let it settle first.
+      if (res.ok && ['click', 'goto', 'press'].includes(out.tool.name)) {
+        await new Promise((r) => setTimeout(r, 1800));
+      }
+
       // Confirm turn: fresh snapshot, speech + look-only tools. This is where
       // "say plainly what changed; if nothing changed, say so" happens.
       // snapshot/screenshot requests get one too — "let me take a fresh look"
@@ -128,7 +135,15 @@ class Lesson {
         if (confirm.note) this.resources.push(confirm.note);
         if (confirm.say) this.speak(confirm.say);
         if (confirm.tool && LOOK_TOOLS.includes(confirm.tool.name)) await this.execute(confirm.tool);
-        else if (confirm.tool) this.transcript?.log('pilot-act', { tool: confirm.tool.name, ok: false, error: 'deferred: acting tools are not allowed on the confirm turn' });
+        else if (confirm.tool) {
+          this.transcript?.log('pilot-act', { tool: confirm.tool.name, ok: false, error: 'deferred: acting tools are not allowed on the confirm turn' });
+          // Tell the model the action did NOT happen, or its narration and
+          // reality diverge ("I'll navigate there now" + nothing moves —
+          // observed live). Lands in context for the next learner turn.
+          this.push('user', JSON.stringify({
+            event: `action_deferred: your ${confirm.tool.name} was NOT executed — one action per learner turn. The page is unchanged; re-issue it on your next turn or ask the learner.`,
+          }));
+        }
         this.transcript?.log('pilot-turn', { confirm: true, say: confirm.say, tool: confirm.tool?.name ?? null, tookMs: Date.now() - t0 });
       }
     } finally {

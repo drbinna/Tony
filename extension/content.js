@@ -61,17 +61,35 @@ function visible(el) {
   return style.visibility !== 'hidden' && style.display !== 'none';
 }
 
+/** The console renders service dashboards inside same-origin iframes (EC2's
+ *  body lives in one) — walk them too or Tony sees only the shell. */
+function docs() {
+  const list = [document];
+  const walk = (doc, depth) => {
+    if (depth > 2) return;
+    for (const f of doc.querySelectorAll('iframe')) {
+      try {
+        if (f.contentDocument) { list.push(f.contentDocument); walk(f.contentDocument, depth + 1); }
+      } catch { /* cross-origin — skip */ }
+    }
+  };
+  walk(document, 0);
+  return list;
+}
+
 function collect() {
   const sel = 'a,button,input,select,textarea,[role],h1,h2,h3,h4';
   const out = [];
-  for (const el of document.querySelectorAll(sel)) {
-    if (out.length >= 400) break;
-    if (!visible(el)) continue;
-    const role = roleOf(el);
-    if (!role || role === 'presentation' || role === 'none') continue;
-    const name = nameOf(el);
-    if (!name && !['textbox', 'searchbox', 'combobox'].includes(role)) continue;
-    out.push({ el, role, name });
+  for (const doc of docs()) {
+    for (const el of doc.querySelectorAll(sel)) {
+      if (out.length >= 400) return out;
+      if (!visible(el)) continue;
+      const role = roleOf(el);
+      if (!role || role === 'presentation' || role === 'none') continue;
+      const name = nameOf(el);
+      if (!name && !['textbox', 'searchbox', 'combobox'].includes(role)) continue;
+      out.push({ el, role, name });
+    }
   }
   return out;
 }
@@ -118,7 +136,9 @@ function highlight(target, ms = 6000) {
   const r = el.getBoundingClientRect();
   chip.style.left = `${Math.max(4, r.left)}px`;
   chip.style.top = `${Math.max(4, r.top - 22)}px`;
-  document.documentElement.appendChild(chip);
+  // Anchor the chip in the element's OWN document so iframe coordinates
+  // stay correct (fixed positioning is per-frame viewport).
+  el.ownerDocument.documentElement.appendChild(chip);
   setTimeout(() => { el.style.cssText = prev; chip?.remove(); chip = null; }, ms);
 }
 
