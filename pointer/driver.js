@@ -38,6 +38,9 @@ class Driver {
         if (!err) return resolve({ ok: true });
         // exit 2 is the deadman: the learner's own input won the wheel.
         if (err.code === 2) return resolve({ ok: false, deadman: true });
+        // exit 3: the helper verified the cursor never arrived — the OS is
+        // silently discarding our synthesis. Surface it as a hard failure.
+        if (err.code === 3) return resolve({ ok: false, error: 'delivery blocked: cursor did not move (macOS is discarding synthesized input for this process)' });
         resolve({
           ok: false,
           error: err.code === 'ENOENT' ? 'drive helper not built — run observer/build.sh' : err.message,

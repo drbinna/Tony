@@ -2,7 +2,7 @@
   "name": "tony-app",
   "version": "0.1.0",
   "private": true,
-  "description": "Tony \u2014 goblin cloud tutor overlay. Watches the AWS console via the macOS accessibility tree, speaks through an Anam avatar.",
+  "description": "Tony — goblin cloud tutor overlay. Watches the AWS console via the macOS accessibility tree, speaks through an Anam avatar.",
   "main": "main.js",
   "scripts": {
     "build:observer": "bash observer/build.sh",
@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@anam-ai/js-sdk": "^2.0.0",
+    "@anthropic-ai/sdk": "^0.115.0",
     "dotenv": "^16.4.5"
   },
   "devDependencies": {

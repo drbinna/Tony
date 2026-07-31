@@ -8,6 +8,7 @@ const { Brain, SLOW_MODEL, FAST_MODEL } = require('./brain/server');
 const { Pointer } = require('./pointer/pointer');
 const { Driver } = require('./pointer/driver');
 const { Transcript } = require('./brain/transcript');
+const { Grounder } = require('./brain/vision');
 
 const WIDTH = 220;
 const HEIGHT = 340;
@@ -17,6 +18,7 @@ let observer = null;
 let brain = null;
 let pointer = null;
 let driver = null;
+let grounder = null;
 let transcript = null;
 
 // ---------------------------------------------------------------- window
@@ -187,6 +189,8 @@ app.whenReady().then(async () => {
 
   pointer = new Pointer();
   driver = new Driver();
+  grounder = new Grounder(screen.getPrimaryDisplay().size);
+  console.log(`[vision] grounding ${grounder.enabled() ? 'ENABLED (claude-opus-4-8)' : 'disabled — set ANTHROPIC_API_KEY in .env'}`);
   observer = new Observer({ intervalMs: Number(process.env.TICK_MS) || 1500 });
 
   // Screen change is the strongest precompute signal: the learner just landed
@@ -324,6 +328,23 @@ function ringFromAction(rawAction, askFrame) {
     return;
   }
   const action = brain.sanitizeAction(rawAction);
+  // PRIMARY targeting path: Claude vision grounds the action's natural-language
+  // target on a live screenshot. The AX-tree lookup below only runs when no
+  // Anthropic key is configured or the brain omitted a target description.
+  if (grounder?.enabled() && action.target && ['point', 'click', 'type', 'scroll'].includes(action.type)) {
+    visionActuate(action).catch((e) => {
+      console.error(`[vision] ${e.message}`);
+      transcript?.log('vision-ground', { target: action.target, ok: false, error: e.message.slice(0, 200) });
+      brain.session.lastDrive = {
+        type: action.type, label: action.target, ok: false, deadman: false,
+        error: `vision grounding failed: ${e.message.slice(0, 120)}`,
+        screenKey: observer.latest?.screen?.key ?? 'none',
+        treeNodes: (observer.latest?.tree || []).length, at: Date.now(),
+      };
+      send('state', { state: 'observing' });
+    });
+    return;
+  }
   // Mutating actions survive sanitizeAction ONLY on sandbox accounts — on
   // own_account they arrive here already demoted to a point. This is scope B:
   // Tony actually takes the wheel.
@@ -462,6 +483,80 @@ async function driveAction(action, frame) {
     pointer.clear();
     send('state', { state: 'observing' });
     if (res.error) console.error(`[drive] failed: ${res.error}`);
+  }
+}
+
+/**
+ * Vision-grounded actuation — the computer-use path. Claude locates the
+ * target on a live screenshot (coordinates come back in logical screen
+ * pixels, 1:1 with CGEvent coords); the ring shows what was found; drive.swift
+ * performs the gesture with the deadman armed. Every step transcript-logged.
+ */
+async function visionActuate(action) {
+  if (driver.busy) {
+    transcript?.log('drive', { type: action.type, label: action.target, ok: false, error: 'gesture already in flight' });
+    return;
+  }
+  const t0 = Date.now();
+  const g = await grounder.ground(action.target);
+  transcript?.log('vision-ground', {
+    target: action.target, found: g.found, label: g.label,
+    x: g.x, y: g.y, w: g.width, h: g.height,
+    tookMs: Date.now() - t0, tokens: g.usage,
+  });
+
+  if (!g.found) {
+    console.warn(`[vision] not found on screen: "${action.target}"`);
+    brain.session.lastDrive = {
+      type: action.type, label: action.target, ok: false, deadman: false,
+      error: 'vision: target not visible on the current screen',
+      screenKey: observer.latest?.screen?.key ?? 'none',
+      treeNodes: (observer.latest?.tree || []).length, at: Date.now(),
+    };
+    send('state', { state: 'observing' });
+    return;
+  }
+
+  const bounds = [g.x - g.width / 2, g.y - g.height / 2, g.width, g.height];
+  pointer.point({ bounds, label: (g.label || action.target).slice(0, 40) });
+  brain.session.lastPointed = { element_id: action.element_id ?? null, label: g.label || action.target };
+  console.log(`[vision] ${action.type} -> "${action.target}" @ ${g.x},${g.y} (${Date.now() - t0}ms)`);
+
+  if (action.type === 'point') return;   // ring only; the learner clicks
+
+  driving = true;
+  send('state', { state: 'driving' });
+  transcript?.log('drive', {
+    type: action.type, label: g.label || action.target, x: g.x, y: g.y, via: 'vision',
+    ...(action.text ? { text: String(action.text).slice(0, 120) } : {}),
+    ...(action.direction ? { direction: action.direction } : {}),
+  });
+
+  let res;
+  if (action.type === 'scroll') {
+    res = await driver.drive({ kind: 'scroll', x: g.x, y: g.y, direction: action.direction || 'down' });
+  } else {
+    res = await driver.drive({ kind: 'click', x: g.x, y: g.y });
+    if (res.ok && action.type === 'type' && action.text) {
+      res = await driver.drive({ kind: 'type', text: String(action.text).slice(0, 500) });
+    }
+  }
+
+  transcript?.log('drive-done', { type: action.type, via: 'vision', ok: res.ok, deadman: !!res.deadman, ...(res.error ? { error: res.error } : {}) });
+  brain.session.lastDrive = {
+    type: action.type, label: g.label || action.target, ok: res.ok, deadman: !!res.deadman,
+    error: res.error || null,
+    screenKey: observer.latest?.screen?.key ?? 'none',
+    treeNodes: (observer.latest?.tree || []).length, at: Date.now(),
+  };
+
+  if (res.deadman) {
+    abortDriving('learner input');
+  } else {
+    driving = false;
+    pointer.clear();
+    send('state', { state: 'observing' });
+    if (res.error) console.error(`[vision-drive] failed: ${res.error}`);
   }
 }
 

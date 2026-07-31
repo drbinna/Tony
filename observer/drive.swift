@@ -101,8 +101,22 @@ func glide(to target: CGPoint) {
     }
 }
 
+/// Delivery self-check. Warp + posting can silently no-op depending on how
+/// this process was spawned (measured live: CLI-spawned moves worked while
+/// Electron-spawned ones reported ok and moved nothing). Exit 3 = the cursor
+/// did not actually arrive; the caller must not claim the gesture happened.
+func verifyArrived(_ target: CGPoint) {
+    let now = currentMouse()
+    if abs(now.x - target.x) > 8 || abs(now.y - target.y) > 8 {
+        FileHandle.standardError.write(Data(
+            "drive: DELIVERY BLOCKED — cursor at \(Int(now.x)),\(Int(now.y)), target \(Int(target.x)),\(Int(target.y))\n".utf8))
+        exit(3)
+    }
+}
+
 func click(at p: CGPoint) {
     glide(to: p)
+    verifyArrived(p)
     usleep(90_000)   // beat between arrival and click; reads as intent
     if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
                           mouseCursorPosition: p, mouseButton: .left) {
@@ -173,6 +187,7 @@ DispatchQueue.global().async {
     case "move":   // glide only, no click — gesture/test path
         guard let x = cmd["x"] as? Double, let y = cmd["y"] as? Double else { exit(1) }
         glide(to: CGPoint(x: x, y: y))
+        verifyArrived(CGPoint(x: x, y: y))
     case "click":
         guard let x = cmd["x"] as? Double, let y = cmd["y"] as? Double else { exit(1) }
         click(at: CGPoint(x: x, y: y))
