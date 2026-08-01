@@ -25,3 +25,7 @@ out/
 
 # Session transcripts (debugging; may contain spoken conversation)
 transcripts/
+
+# Per-session lesson handoff artifacts (Terraform + step logs)
+lesson-artifacts/
+.lesson-profile/

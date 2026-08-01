@@ -282,6 +282,7 @@ app.whenReady().then(async () => {
       const bridge = new ExtensionBridge({ log: console });
       pilot = bridge;   // Pilot-compatible surface; will-quit close() applies
       lesson = new Lesson({ brain, pilot: bridge, transcript, speak, config: lessonConfig });
+      console.log(`[lesson] handoff artifacts -> ${lesson.dir}`);
       bridge.listen()
         .then(() => {
           transcript.log('pilot-ready', { mode: 'extension', port: bridge.port });
