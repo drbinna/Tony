@@ -18,8 +18,17 @@ echo "Building signed + notarized release for Apple ID: ${APPLE_ID}"
 echo "Notarization uploads the app to Apple and can take 2–15 minutes…"
 npm run dist:notarize
 
+# electron-builder notarizes and staples the .app INSIDE the dmg, but not the
+# .dmg container itself — so a downloaded .dmg has no ticket of its own. Submit
+# and staple it here so the disk image opens with no Gatekeeper prompt too.
+DMG="dist/Tony-0.1.0-universal.dmg"
 echo
-echo "Verifying the notarization ticket is stapled…"
-xcrun stapler validate "dist/Tony-0.1.0-universal.dmg" \
-  && echo "✅ Stapled. This DMG opens with no Gatekeeper warning." \
-  || echo "⚠️  Staple check failed — see the electron-builder log above."
+echo "Notarizing the DMG container…"
+xcrun notarytool submit "$DMG" \
+  --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+  --wait
+echo "Stapling the ticket to the DMG…"
+xcrun stapler staple "$DMG"
+xcrun stapler validate "$DMG" \
+  && echo "✅ App and DMG both notarized + stapled. Clean-install ready." \
+  || echo "⚠️  DMG staple failed — see above."

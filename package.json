@@ -61,7 +61,7 @@
   "scripts": {
     "build:observer": "bash observer/build.sh",
     "dist": "npm run build && electron-builder --mac",
-    "dist:notarize": "npm run build && electron-builder --mac -c.mac.notarize.teamId=8938U82HGG",
+    "dist:notarize": "npm run build && electron-builder --mac -c.mac.notarize=true",
     "release:mac": "bash build/notarize.sh",
     "start": "npm run build && electron .",
     "start:nobuild": "electron .",
