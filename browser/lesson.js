@@ -110,8 +110,8 @@ class Lesson {
     if (this.history.length > MAX_HISTORY) this.history.splice(0, 2);
   }
 
-  async model() {
-    const raw = await this.brain.pilotTurn(this.system, this.history);
+  async model({ fast = false } = {}) {
+    const raw = await this.brain.pilotTurn(this.system, this.history, { fast });
     const obj = this.brain.constructor.parseJson(raw);
     if (!obj) {
       this.transcript?.log('parse-failed', { where: 'pilotTurn', raw: raw.slice(0, 400) });
@@ -124,9 +124,15 @@ class Lesson {
     const t0 = Date.now();
     try {
       switch (tool.name) {
-        case 'highlight':
-          await this.pilot.highlight({ role: tool.role, name: tool.targetName, nth: tool.nth ?? 0 });
-          break;
+        case 'highlight': {
+          const proof = await this.pilot.highlight({ role: tool.role, name: tool.targetName, nth: tool.nth ?? 0 });
+          // No rect = a pre-0.5 content script answered (its highlight dies
+          // after 6s). The tab must be refreshed after an extension reload —
+          // this happened silently once; never again.
+          if (!proof?.rect) this.log.warn?.('[lesson] highlight returned NO PROOF — the console tab is running an old content script. Reload the extension AND refresh the tab.');
+          this.transcript?.log('pilot-act', { tool: 'highlight', role: tool.role, target: tool.targetName, ok: true, rect: proof?.rect, ...(proof?.rect ? {} : { staleContentScript: true }), tookMs: Date.now() - t0 });
+          return { ok: true };
+        }
         case 'click':
           await this.pilot.click({ role: tool.role, name: tool.targetName, nth: tool.nth ?? 0 });
           break;
@@ -169,13 +175,24 @@ class Lesson {
       this.push('user', await this.userPayload(learnerText, 'learner_message'));
       const out = await this.model();
       this.push('assistant', JSON.stringify(out));
-      this.record(out);
-      if (out.say) this.speak(out.say);
-      this.transcript?.log('pilot-turn', { learner: learnerText, say: out.say, tool: out.tool?.name ?? null, tookMs: Date.now() - t0 });
+
+      // Highlight runs BEFORE the narration: "I've outlined it" must already
+      // be true when the learner hears it (it's ~15ms through the bridge, so
+      // speech isn't delayed). If it fails, the claim is never spoken — the
+      // confirm turn below reports the failure and speaks the correction.
+      let res = null;
+      let say = out.say;
+      if (out.tool?.name === 'highlight') {
+        res = await this.execute(out.tool);
+        if (!res.ok) say = null;
+      }
+      this.record({ ...out, say });
+      if (say) this.speak(say);
+      this.transcript?.log('pilot-turn', { learner: learnerText, say, tool: out.tool?.name ?? null, ...(say !== out.say ? { unspoken: out.say } : {}), tookMs: Date.now() - t0 });
 
       if (!out.tool) return;
 
-      const res = await this.execute(out.tool);
+      if (!res) res = await this.execute(out.tool);
 
       // The console SPA needs a beat to render after navigation — confirming
       // instantly reads the OLD page and Tony reports "nothing changed" on
@@ -190,23 +207,57 @@ class Lesson {
       // must be followed by the report, not by silence (observed live).
       // Highlight skips it: the narration already accompanied the outline.
       if (ACT_TOOLS.includes(out.tool.name) || ['snapshot', 'screenshot'].includes(out.tool.name) || !res.ok) {
-        this.push('user', await this.userPayload(null,
-          res.ok ? `action_executed: ${out.tool.name}` : `action_failed: ${out.tool.name} — ${res.error}`));
-        const confirm = await this.model();
-        this.push('assistant', JSON.stringify(confirm));
-        this.record(confirm);
-        if (confirm.say) this.speak(confirm.say);
-        if (confirm.tool && LOOK_TOOLS.includes(confirm.tool.name)) await this.execute(confirm.tool);
-        else if (confirm.tool) {
-          this.transcript?.log('pilot-act', { tool: confirm.tool.name, ok: false, error: 'deferred: acting tools are not allowed on the confirm turn' });
-          // Tell the model the action did NOT happen, or its narration and
-          // reality diverge ("I'll navigate there now" + nothing moves —
-          // observed live). Lands in context for the next learner turn.
-          this.push('user', JSON.stringify({
-            event: `action_deferred: your ${confirm.tool.name} was NOT executed — one action per learner turn. The page is unchanged; re-issue it on your next turn or ask the learner.`,
-          }));
+        // The report loop. The first pass confirms the learner-visible action
+        // on the slow brain (it may carry teaching and iac). But if a report
+        // turn ITSELF asks for a fresh look ("page is still loading, let me
+        // check"), loop again: settle, snapshot, and report — on the fast
+        // model, because "let me take a look" followed by 17s of silence is
+        // the exact thing it promised not to do (observed live). Capped so a
+        // look-happy model can't spin forever.
+        let event = res.ok ? `action_executed: ${out.tool.name}` : `action_failed: ${out.tool.name} — ${res.error}`;
+        let fast = res.ok && ['snapshot', 'screenshot'].includes(out.tool.name);
+        let hlRetried = false;
+        for (let pass = 0; pass < 3; pass++) {
+          this.push('user', await this.userPayload(null, event));
+          const confirm = await this.model({ fast });
+          this.push('assistant', JSON.stringify(confirm));
+          let csay = confirm.say;
+          let cres = null;
+          if (confirm.tool && LOOK_TOOLS.includes(confirm.tool.name)) {
+            // Same truth rule as the main turn: outline first, narrate after.
+            cres = await this.execute(confirm.tool);
+            if (confirm.tool.name === 'highlight' && !cres.ok) csay = null;
+          } else if (confirm.tool) {
+            this.transcript?.log('pilot-act', { tool: confirm.tool.name, ok: false, error: 'deferred: acting tools are not allowed on the confirm turn' });
+            // Tell the model the action did NOT happen, or its narration and
+            // reality diverge ("I'll navigate there now" + nothing moves —
+            // observed live). Lands in context for the next learner turn.
+            this.push('user', JSON.stringify({
+              event: `action_deferred: your ${confirm.tool.name} was NOT executed — one action per learner turn. The page is unchanged; re-issue it on your next turn or ask the learner.`,
+            }));
+          }
+          this.record({ ...confirm, say: csay });
+          if (csay) this.speak(csay);
+          this.transcript?.log('pilot-turn', { confirm: true, pass, fast, say: csay, tool: confirm.tool?.name ?? null, ...(csay !== confirm.say ? { unspoken: confirm.say } : {}), tookMs: Date.now() - t0 });
+          // A confirm-turn outline that failed would have left the learner in
+          // silence after their action — run ONE corrected report turn instead.
+          if (confirm.tool?.name === 'highlight' && cres && !cres.ok && !hlRetried) {
+            hlRetried = true;
+            event = `action_failed: highlight — ${cres.error}`;
+            fast = true;
+            continue;
+          }
+          // "Let me take a fresh look" was just spoken — the look happens now
+          // and the NEXT pass speaks the report. Without this, the request
+          // dead-ended and Tony went silent until the learner spoke again.
+          if (['snapshot', 'screenshot'].includes(confirm.tool?.name)) {
+            await new Promise((r) => setTimeout(r, 1800));   // let the SPA settle
+            event = `action_executed: ${confirm.tool.name} — the fresh page state is attached; report to the learner what you see now`;
+            fast = true;
+            continue;
+          }
+          break;
         }
-        this.transcript?.log('pilot-turn', { confirm: true, say: confirm.say, tool: confirm.tool?.name ?? null, tookMs: Date.now() - t0 });
       }
     } finally {
       this.busy = false;

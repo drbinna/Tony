@@ -30,13 +30,29 @@ class ExtensionBridge {
       this.wss = new WebSocketServer({ host: '127.0.0.1', port: this.port, path: '/tony' });
       this.wss.on('error', reject);
       this.wss.on('listening', () => resolve(this));
-      this.wss.on('connection', (sock) => {
-        this.log.log?.('[bridge] console tab connected');
+      this.wss.on('connection', (sock, req) => {
+        // Ordinary web pages CAN open sockets to localhost, and a malicious
+        // page impersonating the extension could feed Tony fake snapshots or
+        // watch his commands. Browsers stamp an unforgeable Origin on browser-
+        // context connections, so require the extension's. (A hostile native
+        // process can still forge the header — that's outside this threat
+        // model; the browser is the boundary this bridge defends.)
+        const origin = req.headers.origin || '';
+        if (!origin.startsWith('chrome-extension://')) {
+          this.log.warn?.(`[bridge] REJECTED connection from origin "${origin || '<none>'}"`);
+          sock.close(1008, 'origin not allowed');
+          return;
+        }
         this.sock = sock;
         sock.on('message', (raw) => {
           let msg;
           try { msg = JSON.parse(raw); } catch { return; }
-          if (msg.event === 'hello') { this.lastUrl = msg.url; return; }
+          if (msg.event === 'hello') {
+            this.lastUrl = msg.url;
+            this.extVersion = msg.version ?? null;
+            this.log.log?.(`[bridge] console tab connected (extension v${this.extVersion ?? '<0.5 — RELOAD the extension>'})`);
+            return;
+          }
           const p = this.pending.get(msg.id);
           if (!p) return;
           this.pending.delete(msg.id);
@@ -81,7 +97,8 @@ class ExtensionBridge {
   }
 
   async highlight({ role, name, nth = 0 }) {
-    await this.request('highlight', { role, name, nth });
+    // Returns proof from the page: the matched role/name and its rect.
+    return await this.request('highlight', { role, name, nth });
   }
 
   async click({ role, name, nth = 0 }) {

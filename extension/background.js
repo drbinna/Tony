@@ -49,7 +49,7 @@ function connect() {
   ws.onopen = async () => {
     retryMs = 1000;
     const tab = await consoleTab().catch(() => null);
-    ws.send(JSON.stringify({ event: 'hello', url: tab?.url ?? null, title: tab?.title ?? null }));
+    ws.send(JSON.stringify({ event: 'hello', url: tab?.url ?? null, title: tab?.title ?? null, version: chrome.runtime.getManifest().version }));
     clearInterval(pingTimer);
     pingTimer = setInterval(() => {
       if (ws?.readyState === 1) ws.send(JSON.stringify({ event: 'ping' }));

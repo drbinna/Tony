@@ -66,37 +66,84 @@ class Pilot {
   }
 
   /**
-   * Flash a highlight outline on an element so the learner's eye lands on it.
-   * In-page (scrolls with content) — replaces the OS-level pointer ring.
+   * Persistent highlight on an element so the learner's eye lands on it —
+   * and stays landed. Overlay box (survives the console rewriting element
+   * styles), rAF-tracked through scrolling, no removal timer: it clears when
+   * the next action moves the lesson forward. Returns the element's rect as
+   * proof the outline actually landed.
    */
-  async highlight(target, ms = 6000) {
+  async highlight(target) {
     const loc = this.locate(target);
     await loc.scrollIntoViewIfNeeded({ timeout: 5000 });
-    await loc.evaluate((el, dur) => {
-      const prev = el.style.cssText;
-      el.style.outline = '3px solid #FF8A3D';
-      el.style.outlineOffset = '2px';
-      el.style.borderRadius = '4px';
-      setTimeout(() => { el.style.cssText = prev; }, dur);
-    }, ms);
+    return await loc.evaluate((el) => {
+      const doc = el.ownerDocument;
+      window.__tonyHlClear?.();
+      if (!doc.getElementById('tony-hl-style')) {
+        const st = doc.createElement('style');
+        st.id = 'tony-hl-style';
+        st.textContent = '@keyframes tony-hl-pulse {'
+          + '0%,100% { box-shadow: 0 0 0 4px rgba(255,138,61,.30), 0 0 22px 6px rgba(255,138,61,.55); }'
+          + '50% { box-shadow: 0 0 0 7px rgba(255,138,61,.16), 0 0 30px 10px rgba(255,138,61,.75); }'
+          + '}';
+        doc.documentElement.appendChild(st);
+      }
+      const box = doc.createElement('div');
+      box.style.cssText = 'position:fixed;z-index:2147483647;pointer-events:none;display:none;'
+        + 'border:3px solid #FF8A3D;border-radius:6px;'
+        + 'animation:tony-hl-pulse 1.6s ease-in-out infinite;';
+      const chip = doc.createElement('div');
+      chip.textContent = 'Tony';
+      chip.style.cssText = 'position:absolute;top:-24px;left:-3px;background:#FF8A3D;color:#1A0D00;'
+        + 'font:700 11px -apple-system,sans-serif;padding:2px 8px;border-radius:999px;';
+      box.appendChild(chip);
+      doc.documentElement.appendChild(box);
+      let live = true;
+      window.__tonyHlClear = () => { live = false; box.remove(); };
+      const tick = () => {
+        if (!live) return;
+        if (el.isConnected) {
+          const r = el.getBoundingClientRect();
+          box.style.display = 'block';
+          box.style.left = `${r.left - 5}px`;
+          box.style.top = `${r.top - 5}px`;
+          box.style.width = `${r.width + 4}px`;
+          box.style.height = `${r.height + 4}px`;
+        } else {
+          box.style.display = 'none';
+        }
+        requestAnimationFrame(tick);
+      };
+      tick();
+      const r = el.getBoundingClientRect();
+      return { rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } };
+    });
+  }
+
+  /** Best effort — the overlay also dies with navigation. */
+  async clearHighlight() {
+    await this.page.evaluate(() => window.__tonyHlClear?.()).catch(() => {});
   }
 
   async click(target) {
+    await this.clearHighlight();
     const loc = this.locate(target);
     await loc.click({ timeout: 8000 });
   }
 
   async type(target, text) {
+    await this.clearHighlight();
     const loc = this.locate(target);
     await loc.click({ timeout: 8000 });
     await loc.fill(String(text).slice(0, 500), { timeout: 8000 });
   }
 
   async press(key) {
+    await this.clearHighlight();
     await this.page.keyboard.press(key);
   }
 
   async goto(url) {
+    await this.clearHighlight();
     await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
   }
 

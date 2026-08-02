@@ -23,9 +23,13 @@ const SLOW_MODEL = 'accounts/fireworks/routers/kimi-k3-fast';
 const FAST_MODEL = 'accounts/fireworks/models/deepseek-v4-flash';
 
 class Brain {
-  constructor({ fireworksKey, anamKey, personaConfig, log = console, transcript = null }) {
+  constructor({ fireworksKey, anamKey, fireworksUrl = null, anamTokenUrl = null, personaConfig, log = console, transcript = null }) {
     this.fireworksKey = fireworksKey;
     this.anamKey = anamKey;
+    // Proxy mode points these at the hosted key proxy and the "keys" above
+    // are access codes; local mode leaves them null and hits the real APIs.
+    this.fireworksUrl = fireworksUrl || FIREWORKS;
+    this.anamTokenUrl = anamTokenUrl || ANAM_TOKEN_URL;
     this.personaConfig = personaConfig;
     this.log = log;
     this.transcript = transcript;
@@ -48,7 +52,7 @@ class Brain {
    * built-in brain so every word Tony speaks comes from here.
    */
   async mintSessionToken() {
-    const res = await fetch(ANAM_TOKEN_URL, {
+    const res = await fetch(this.anamTokenUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.anamKey}` },
       body: JSON.stringify({
@@ -63,7 +67,7 @@ class Brain {
   // ---------------------------------------------------------------- models
 
   async callModel({ model, system, user, maxTokens, extra = {}, stream = false }) {
-    const res = await fetch(FIREWORKS, {
+    const res = await fetch(this.fireworksUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.fireworksKey}` },
       body: JSON.stringify({
@@ -214,13 +218,17 @@ class Brain {
   // ------------------------------------------------------------ pilot mode
 
   /** One turn of the Playwright lesson loop: system + running history in,
-   *  raw model text out (the Lesson layer parses the JSON action). */
-  async pilotTurn(system, messages) {
-    const res = await fetch(FIREWORKS, {
+   *  raw model text out (the Lesson layer parses the JSON action). `fast`
+   *  routes report-what-you-see turns to the fast model: a "here's the page
+   *  now" sentence doesn't need 16s of slow-brain reasoning, and the learner
+   *  is sitting in silence while it generates. */
+  async pilotTurn(system, messages, { fast = false } = {}) {
+    const res = await fetch(this.fireworksUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.fireworksKey}` },
       body: JSON.stringify({
-        model: SLOW_MODEL, max_tokens: 2000, temperature: 0.3,
+        model: fast ? FAST_MODEL : SLOW_MODEL, max_tokens: fast ? 700 : 2000, temperature: 0.3,
+        ...(fast ? { reasoning_effort: 'none' } : {}),
         messages: [{ role: 'system', content: system }, ...messages],
       }),
     });

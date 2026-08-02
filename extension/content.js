@@ -7,7 +7,7 @@
  * the WebSocket to the Tony app (the console page's CSP forbids sockets from
  * here) and relays commands via chrome.runtime messaging:
  *   snapshot   -> role/name list of visible, interactive page structure
- *   highlight  -> orange outline + "Tony" chip on an element (guided pointing)
+ *   highlight  -> persistent glowing outline + "Tony" chip (guided pointing)
  *   click      -> DOM click on an element (only sent after learner consent)
  *   type       -> focus a field and set its value React-compatibly
  *   press      -> dispatch a keyboard event to the focused element
@@ -117,39 +117,95 @@ function locate({ role, name, nth = 0 }) {
     c.role === role && (c.name.toLowerCase() === want || c.name.toLowerCase().includes(want)));
   const hit = matches[nth];
   if (!hit) throw new Error(`no visible ${role} matching "${name}" (found ${matches.length})`);
-  return hit.el;
+  return hit;
 }
 
-let chip = null;
-function highlight(target, ms = 6000) {
-  const el = locate(target);
-  el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  const prev = el.style.cssText;
-  el.style.outline = '3px solid #FF8A3D';
-  el.style.outlineOffset = '2px';
-  el.style.borderRadius = '4px';
-  chip?.remove();
-  chip = document.createElement('div');
+// --------------------------------------------------------------- highlight
+// Persistent tracked highlight — the pointing is the product, so it is built
+// to survive what the console throws at it:
+//  - an overlay box, not inline styles on the target: Cloudscape re-renders
+//    rewrite element styles mid-lesson and would wipe the outline
+//  - rAF tracking keeps the box glued to the element through scrolling and
+//    layout shifts, and re-locates by role/name if React replaces the node
+//  - NO removal timer: turns take 15-20s and the learner looks up when Tony
+//    finishes talking. The outline stays until the next command replaces or
+//    clears it. If the element stays gone for 8s (panel closed), it clears
+//    rather than float over nothing.
+let hl = null;   // { target, el, box, missedAt }
+
+function ensureHlStyle(doc) {
+  if (doc.getElementById('tony-hl-style')) return;
+  const st = doc.createElement('style');
+  st.id = 'tony-hl-style';
+  st.textContent = '@keyframes tony-hl-pulse {'
+    + '0%,100% { box-shadow: 0 0 0 4px rgba(255,138,61,.30), 0 0 22px 6px rgba(255,138,61,.55); }'
+    + '50% { box-shadow: 0 0 0 7px rgba(255,138,61,.16), 0 0 30px 10px rgba(255,138,61,.75); }'
+    + '}';
+  doc.documentElement.appendChild(st);
+}
+
+function clearHighlight() {
+  if (!hl) return;
+  hl.box.remove();
+  hl = null;       // the tracking loop sees the swap and exits
+}
+
+function trackHighlight(state) {
+  if (hl !== state) return;
+  if (!state.el || !state.el.isConnected || !visible(state.el)) {
+    try { state.el = locate(state.target).el; } catch { state.el = null; }
+  }
+  if (state.el) {
+    state.missedAt = 0;
+    const r = state.el.getBoundingClientRect();
+    const s = state.box.style;
+    s.display = 'block';
+    s.left = `${r.left - 5}px`;
+    s.top = `${r.top - 5}px`;
+    s.width = `${r.width + 4}px`;
+    s.height = `${r.height + 4}px`;
+  } else {
+    state.missedAt ||= performance.now();
+    state.box.style.display = 'none';
+    if (performance.now() - state.missedAt > 8000) { clearHighlight(); return; }
+    state.el = null;
+  }
+  requestAnimationFrame(() => trackHighlight(state));
+}
+
+function highlight(target) {
+  const hit = locate(target);
+  clearHighlight();
+  // Anchor in the element's OWN document so iframe coordinates stay correct
+  // (fixed positioning is per-frame viewport).
+  const doc = hit.el.ownerDocument;
+  ensureHlStyle(doc);
+  hit.el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  const box = doc.createElement('div');
+  box.style.cssText = 'position:fixed;z-index:2147483647;pointer-events:none;display:none;'
+    + 'border:3px solid #FF8A3D;border-radius:6px;'
+    + 'animation:tony-hl-pulse 1.6s ease-in-out infinite;';
+  const chip = doc.createElement('div');
   chip.textContent = 'Tony';
-  chip.style.cssText = 'position:fixed;z-index:2147483647;background:#FF8A3D;color:#1A0D00;'
-    + 'font:700 11px -apple-system,sans-serif;padding:2px 8px;border-radius:999px;pointer-events:none;';
-  const r = el.getBoundingClientRect();
-  chip.style.left = `${Math.max(4, r.left)}px`;
-  chip.style.top = `${Math.max(4, r.top - 22)}px`;
-  // Anchor the chip in the element's OWN document so iframe coordinates
-  // stay correct (fixed positioning is per-frame viewport).
-  el.ownerDocument.documentElement.appendChild(chip);
-  setTimeout(() => { el.style.cssText = prev; chip?.remove(); chip = null; }, ms);
+  chip.style.cssText = 'position:absolute;top:-24px;left:-3px;background:#FF8A3D;color:#1A0D00;'
+    + 'font:700 11px -apple-system,sans-serif;padding:2px 8px;border-radius:999px;';
+  box.appendChild(chip);
+  doc.documentElement.appendChild(box);
+  hl = { target, el: hit.el, box, missedAt: 0 };
+  trackHighlight(hl);
+  // Proof for the app: what got outlined and where it sits right now.
+  const r = hit.el.getBoundingClientRect();
+  return { role: hit.role, name: hit.name, rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } };
 }
 
 function click(target) {
-  const el = locate(target);
+  const el = locate(target).el;
   el.scrollIntoView({ block: 'center' });
   el.click();
 }
 
 function type(target, text) {
-  const el = locate(target);
+  const el = locate(target).el;
   el.scrollIntoView({ block: 'center' });
   el.focus();
   // React swallows plain .value writes; go through the native setter then
@@ -175,8 +231,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   const { cmd, args = {} } = msg || {};
   try {
     let data = null;
+    // Acting moves the lesson forward — a stale outline would point at the
+    // past. Look-only commands (snapshot/ping) leave it alone.
+    if (['click', 'type', 'press', 'goto'].includes(cmd)) clearHighlight();
     if (cmd === 'snapshot') data = snapshot();
-    else if (cmd === 'highlight') highlight(args);
+    else if (cmd === 'highlight') data = highlight(args);
+    else if (cmd === 'clearHighlight') clearHighlight();
     else if (cmd === 'click') click(args);
     else if (cmd === 'type') type(args, args.text);
     else if (cmd === 'press') press(args.key || 'Enter');
