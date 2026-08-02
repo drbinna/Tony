@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'unsafe-inline'">
+<title>Tony — Setup</title>
+<style>
+  :root {
+    --void: #0B0F0E; --shell: #131A18; --goblin: #3FD07A;
+    --ember: #FF8A3D; --slate: #7A8B85; --bone: #E8EDEA;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--void); color: var(--bone); height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    user-select: none;
+  }
+  .card { width: 340px; display: flex; flex-direction: column; gap: 14px; }
+  .orb {
+    width: 64px; height: 64px; border-radius: 50%; margin: 0 auto 4px;
+    background: radial-gradient(60% 45% at 50% 38%, rgba(63,208,122,.55), rgba(63,208,122,.08) 70%, transparent), #10201A;
+    border: 2px solid rgba(63,208,122,.45);
+  }
+  h1 { font-size: 17px; text-align: center; font-weight: 650; }
+  p  { font-size: 12.5px; line-height: 1.5; color: var(--slate); text-align: center; }
+  input {
+    width: 100%; padding: 10px 12px; border-radius: 10px;
+    background: var(--shell); border: 1px solid rgba(255,255,255,.12);
+    color: var(--bone); font-family: var(--mono); font-size: 13px;
+    letter-spacing: .04em; outline: none; text-align: center;
+  }
+  input:focus { border-color: var(--goblin); }
+  button {
+    width: 100%; padding: 10px; border: 0; border-radius: 999px;
+    background: var(--goblin); color: #06130C; font-weight: 700;
+    font-size: 13px; cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+  #err { color: var(--ember); font-size: 11.5px; text-align: center; min-height: 16px; }
+</style>
+</head>
+<body>
+  <form class="card" id="form">
+    <div class="orb"></div>
+    <h1>Meet Tony</h1>
+    <p>Your goblin AWS tutor. Paste the access code you were given to wake him up — you only do this once.</p>
+    <input id="code" placeholder="access code" autocomplete="off" spellcheck="false" autofocus>
+    <div id="err"></div>
+    <button id="go" type="submit">Wake Tony up</button>
+  </form>
+  <script src="./setup.js"></script>
+</body>
+</html>

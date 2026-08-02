@@ -12,6 +12,7 @@ const { Grounder } = require('./brain/vision');
 const { Pilot } = require('./browser/pilot');
 const { ExtensionBridge } = require('./browser/bridge');
 const { Lesson } = require('./browser/lesson');
+const { AVATAR_DEFAULTS, resolveCreds, validateAccessCode, writeUserConfig, dataDirs } = require('./config');
 
 // Lesson-loop backends, mutually exclusive with the classic observer path:
 //   TONY_EXT=1   — Chrome-extension bridge: Tony guides inside the learner's
@@ -157,9 +158,56 @@ async function askLogged(source, params) {
   return res;
 }
 
+// ------------------------------------------------------------- first-run
+
+/** Fresh install, no credentials: a small window that takes an access code,
+ *  validates it against the proxy, saves it, and relaunches into the normal
+ *  boot path. The ONLY configuration a non-developer ever touches. */
+function openSetupWindow() {
+  const w = new BrowserWindow({
+    width: 440,
+    height: 400,
+    resizable: false,
+    fullscreenable: false,
+    title: 'Tony — Setup',
+    backgroundColor: '#0B0F0E',
+    webPreferences: {
+      preload: path.join(__dirname, 'setup-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  w.loadFile(path.join(__dirname, 'renderer', 'setup.html'));
+}
+
+ipcMain.handle('setup-submit', async (_e, rawCode) => {
+  const code = String(rawCode || '').trim();
+  if (!code) return { ok: false, error: 'Enter your access code.' };
+  try {
+    if (!await validateAccessCode(code)) {
+      return { ok: false, error: 'That code was not recognized. Check for typos and try again.' };
+    }
+  } catch {
+    return { ok: false, error: 'Could not reach the Tony service — check your internet connection.' };
+  }
+  writeUserConfig(app.getPath('userData'), { accessCode: code });
+  app.relaunch();
+  app.exit(0);
+  return { ok: true };
+});
+
 // -------------------------------------------------------------------- boot
 
 app.whenReady().then(async () => {
+  // No credentials at all (fresh install): first-run setup instead of a dead
+  // avatar. Stays a REGULAR app (dock, focus) so the window is reachable;
+  // the relaunch after saving comes back through the normal path below.
+  const creds = resolveCreds(app.getPath('userData'));
+  if (!creds.configured) {
+    openSetupWindow();
+    return;
+  }
+
   // Accessory activation: no dock icon and — critically — launching Tony does
   // not make Electron the active app. The observer skips ticks where Tony is
   // frontmost (so he can't blind himself), which meant a normal launch left
@@ -176,19 +224,23 @@ app.whenReady().then(async () => {
   const perms = await checkPermissions();
   send('permissions', perms);
 
-  transcript = new Transcript();
+  const dirs = dataDirs({ isPackaged: app.isPackaged, userDataPath: app.getPath('userData') });
+  transcript = new Transcript({ dir: dirs.transcripts });
 
   brain = new Brain({
-    fireworksKey: process.env.FIREWORKS_API_KEY,
-    anamKey: process.env.ANAM_API_KEY,
+    fireworksKey: creds.fireworksBearer,
+    anamKey: creds.anamBearer,
+    fireworksUrl: creds.fireworksUrl,
+    anamTokenUrl: creds.anamTokenUrl,
     transcript,
     personaConfig: {
-      name: 'Tony',
-      avatarId: process.env.ANAM_AVATAR_ID,
-      avatarModel: process.env.ANAM_AVATAR_MODEL || 'cara-4',
-      voiceId: process.env.ANAM_VOICE_ID,
+      name: AVATAR_DEFAULTS.name,
+      avatarId: process.env.ANAM_AVATAR_ID || AVATAR_DEFAULTS.avatarId,
+      avatarModel: process.env.ANAM_AVATAR_MODEL || AVATAR_DEFAULTS.avatarModel,
+      voiceId: process.env.ANAM_VOICE_ID || AVATAR_DEFAULTS.voiceId,
     },
   });
+  console.log(`[creds] ${creds.mode} mode`);
 
   transcript.log('session-start', {
     session: brain.session.id,
@@ -202,7 +254,7 @@ app.whenReady().then(async () => {
 
   pointer = new Pointer();
   driver = new Driver();
-  grounder = new Grounder(screen.getPrimaryDisplay().size);
+  grounder = new Grounder({ ...screen.getPrimaryDisplay().size, vision: creds.vision });
   console.log(`[vision] grounding ${grounder.enabled()
     ? `ENABLED via ${grounder.provider} (${grounder.model})`
     : 'disabled — set OPENROUTER_API_KEY or ANTHROPIC_API_KEY in .env'}`);
@@ -281,7 +333,7 @@ app.whenReady().then(async () => {
     if (EXT_MODE) {
       const bridge = new ExtensionBridge({ log: console });
       pilot = bridge;   // Pilot-compatible surface; will-quit close() applies
-      lesson = new Lesson({ brain, pilot: bridge, transcript, speak, config: lessonConfig });
+      lesson = new Lesson({ brain, pilot: bridge, transcript, speak, config: lessonConfig, artifactsDir: dirs.artifacts });
       console.log(`[lesson] handoff artifacts -> ${lesson.dir}`);
       bridge.listen()
         .then(() => {
@@ -295,7 +347,7 @@ app.whenReady().then(async () => {
         });
     } else {
       pilot = new Pilot({ userDataDir: path.join(app.getPath('userData'), 'lesson-profile') });
-      lesson = new Lesson({ brain, pilot, transcript, speak, config: lessonConfig });
+      lesson = new Lesson({ brain, pilot, transcript, speak, config: lessonConfig, artifactsDir: dirs.artifacts });
       pilot.launch(`https://${region}.console.aws.amazon.com/console/home?region=${region}`)
         .then(() => {
           transcript.log('pilot-ready', { mode: 'playwright', url: pilot.url() });

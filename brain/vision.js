@@ -40,12 +40,14 @@ class Grounder {
   /**
    * @param {{width:number, height:number}} logicalSize primary display logical resolution
    */
-  constructor({ width, height, log = console } = {}) {
+  constructor({ width, height, log = console, vision = null } = {}) {
     this.width = width;
     this.height = height;
     this.log = log;
     this.shotPath = path.join(os.tmpdir(), 'tony-ground.png');
-    // Two ways in, OpenRouter preferred when both keys exist:
+    // Three ways in, proxy first (distributed builds hold no real keys):
+    //  - vision option        -> the hosted key proxy's Anthropic-compatible
+    //    endpoint; apiKey is the user's access code.
     //  - OPENROUTER_API_KEY -> OpenRouter's Anthropic-Messages-compatible
     //    endpoint (base https://openrouter.ai/api, tilde model ids). Their
     //    router may not pass output_config through, so this path enforces
@@ -53,7 +55,11 @@ class Grounder {
     //  - ANTHROPIC_API_KEY  -> direct API with strict structured outputs.
     // The SDK constructor THROWS with no key — guard so a keyless launch
     // boots with vision disabled instead of dead.
-    if (process.env.OPENROUTER_API_KEY) {
+    if (vision?.apiKey) {
+      this.provider = vision.provider || 'proxy';
+      this.model = vision.model || process.env.TONY_VISION_MODEL || '~anthropic/claude-opus-latest';
+      this.client = new Anthropic({ apiKey: vision.apiKey, baseURL: vision.baseURL });
+    } else if (process.env.OPENROUTER_API_KEY) {
       this.provider = 'openrouter';
       this.model = process.env.TONY_VISION_MODEL || '~anthropic/claude-opus-latest';
       this.client = new Anthropic({
