@@ -29,3 +29,9 @@ transcripts/
 # Per-session lesson handoff artifacts (Terraform + step logs)
 lesson-artifacts/
 .lesson-profile/
+
+# Vercel project link (proxy deploys)
+proxy/.vercel/
+
+# Notarization credentials (app-specific password) — never commit
+build/notarize.env

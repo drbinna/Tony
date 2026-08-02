@@ -4,8 +4,65 @@
   "private": true,
   "description": "Tony — goblin cloud tutor overlay. Watches the AWS console via the macOS accessibility tree, speaks through an Anam avatar.",
   "main": "main.js",
+  "build": {
+    "appId": "dev.goblinlabs.tony",
+    "productName": "Tony",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "config.js",
+      "preload.js",
+      "setup-preload.js",
+      "package.json",
+      "renderer/**/*",
+      "brain/**/*",
+      "browser/**/*",
+      "observer/**/*",
+      "pointer/**/*",
+      "!**/*.swift",
+      "!**/.env*",
+      "!transcripts/**",
+      "!lesson-artifacts/**",
+      "!proxy/**",
+      "!extension/**",
+      "!test/**"
+    ],
+    "asarUnpack": [
+      "observer/ax-dump",
+      "observer/drive"
+    ],
+    "mac": {
+      "category": "public.app-category.education",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Tony listens so you can talk to him during lessons."
+      }
+    }
+  },
   "scripts": {
     "build:observer": "bash observer/build.sh",
+    "dist": "npm run build && electron-builder --mac",
+    "dist:notarize": "npm run build && electron-builder --mac -c.mac.notarize.teamId=8938U82HGG",
+    "release:mac": "bash build/notarize.sh",
     "start": "npm run build && electron .",
     "start:nobuild": "electron .",
     "start:ext": "TONY_EXT=1 electron .",
@@ -24,7 +81,8 @@
     "ws": "^8.21.1"
   },
   "devDependencies": {
-    "electron": "^31.0.0",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.28.1"
   }
 }
