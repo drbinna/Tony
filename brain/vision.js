@@ -8,13 +8,24 @@
  * via Claude and returns screen coordinates. It is the PRIMARY targeting path
  * when configured; the AX lookup remains only for when no key is present.
  *
+ * SCOPE: this drives the OBSERVER path only (screenshot -> coordinates ->
+ * CGEvent cursor). In extension mode the browser highlights/clicks DOM elements
+ * directly, so ground() is never called and no Screen Recording permission is
+ * needed there — the Grounder is constructed but dormant.
+ *
  * Coordinate math: screencapture writes physical (Retina) pixels; we resample
  * to the LOGICAL display resolution before sending, so the coordinates Claude
  * returns are usable CGEvent screen coordinates with no scale factor.
  *
- * Requires ANTHROPIC_API_KEY (or an Anthropic auth profile) and macOS Screen
- * Recording permission for the app. Latency is a Claude round trip (~1-4s) —
- * off the critical path, covered by the bridge like every other model call.
+ * Credentials, in priority order (constructor picks the first available):
+ *   1. vision option    — the hosted key proxy (apiKey is the user's access
+ *      code); how distributed builds ground with no real key on disk.
+ *   2. OPENROUTER_API_KEY — OpenRouter's Anthropic-compatible endpoint.
+ *   3. ANTHROPIC_API_KEY  — the direct API, with strict structured outputs.
+ * With none of these set, the Grounder boots disabled rather than throwing.
+ * When it runs it also needs macOS Screen Recording permission. Latency is a
+ * Claude round trip (~1-4s) — off the critical path, covered by the bridge
+ * like every other model call.
  */
 const fs = require('fs');
 const os = require('os');
