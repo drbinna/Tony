@@ -15,10 +15,17 @@ const { Lesson } = require('./browser/lesson');
 const { AVATAR_DEFAULTS, resolveCreds, validateAccessCode, writeUserConfig, dataDirs } = require('./config');
 
 // Lesson-loop backends, mutually exclusive with the classic observer path:
-//   TONY_EXT=1   — Chrome-extension bridge: Tony guides inside the learner's
-//                  OWN Chrome (their login, their tabs). Preferred.
-//   TONY_PILOT=1 — Playwright-owned lesson browser.
-const EXT_MODE = process.env.TONY_EXT === '1';
+//   TONY_EXT=1     — Chrome-extension bridge: Tony guides inside the learner's
+//                    OWN Chrome (their login, their tabs). The shipping product.
+//   TONY_PILOT=1   — Playwright-owned lesson browser.
+//   TONY_OBSERVER=1 — the legacy macOS accessibility observer.
+// A packaged build IS the extension product, so it defaults to the bridge —
+// otherwise a plain install lands in observer mode, never opens the bridge the
+// extension connects to, and needs Accessibility permission no one granted.
+// A dev checkout keeps the old default (observer) unless a flag is set, so the
+// observer path stays runnable with a bare `electron .`.
+const EXT_MODE = process.env.TONY_EXT === '1'
+  || (app.isPackaged && process.env.TONY_PILOT !== '1' && process.env.TONY_OBSERVER !== '1');
 const PILOT_MODE = !EXT_MODE && process.env.TONY_PILOT === '1';
 const LESSON_MODE = EXT_MODE || PILOT_MODE;
 
