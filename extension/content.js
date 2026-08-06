@@ -204,17 +204,46 @@ function click(target) {
   el.click();
 }
 
+/** Write a value through the input/textarea prototype's native setter so
+ *  React's value tracker sees the change (a plain el.value= is ignored). */
+function setNativeValue(el, value) {
+  const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+  if (setter) setter.call(el, value); else el.value = value;
+}
+
 function type(target, text) {
   const el = locate(target).el;
   el.scrollIntoView({ block: 'center' });
+  // Some AWS console fields (Cloudscape autosuggest, the unified search) mount
+  // or arm their input on click/focus, so do both before typing.
+  el.click?.();
   el.focus();
-  // React swallows plain .value writes; go through the native setter then
-  // fire input so controlled components see the change.
-  const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-  if (setter) setter.call(el, String(text).slice(0, 500));
-  else el.value = String(text).slice(0, 500);
-  el.dispatchEvent(new Event('input', { bubbles: true }));
+  const str = String(text).slice(0, 500);
+
+  // contenteditable widgets ignore value sets — insert text the DOM way.
+  if (el.isContentEditable) {
+    try { document.execCommand('selectAll', false, null); document.execCommand('insertText', false, str); } catch { el.textContent = str; }
+    el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: str }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    return;
+  }
+
+  // Clear whatever's there first (native setter + input so React resets state).
+  setNativeValue(el, '');
+  el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }));
+
+  // Type character by character with a full key + InputEvent sequence. A single
+  // bare value-set is why AWS's search box stayed empty — Cloudscape/React
+  // autosuggest only registers per-keystroke InputEvents, not a plain Event.
+  let acc = '';
+  for (const ch of str) {
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: ch, bubbles: true, cancelable: true }));
+    acc += ch;
+    setNativeValue(el, acc);
+    el.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: false, inputType: 'insertText', data: ch }));
+    el.dispatchEvent(new KeyboardEvent('keyup', { key: ch, bubbles: true }));
+  }
   el.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
