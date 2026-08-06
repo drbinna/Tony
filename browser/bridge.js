@@ -91,7 +91,19 @@ class ExtensionBridge {
   // ---- Pilot-compatible surface (what browser/lesson.js drives) ----
 
   async snapshot() {
-    const snap = await this.request('snapshot');
+    let snap = await this.request('snapshot');
+    // A near-empty tree almost always means the console SPA was mid-navigation
+    // when we read it (observed live: a 31-char tree during a page transition,
+    // which made Tony say "I can't see your screen"). One short retry lands on
+    // the settled page. A real page is thousands of chars, so 120 cleanly
+    // separates "page shell only" from actual content.
+    if ((snap.tree || '').length < 120) {
+      const firstLen = (snap.tree || '').length;
+      await new Promise((r) => setTimeout(r, 700));
+      const retry = await this.request('snapshot');
+      if ((retry.tree || '').length >= firstLen) snap = retry;
+      this.log.log?.(`[bridge] snapshot was near-empty (${firstLen}ch) -> ${(snap.tree || '').length}ch @ ${snap.url}`);
+    }
     this.lastUrl = snap.url;
     return snap;
   }
