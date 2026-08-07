@@ -82,11 +82,15 @@ class Lesson {
       this.iacBlocks.push(out.iac.trim());
       this.transcript?.log('pilot-iac', { chars: out.iac.length, blocks: this.iacBlocks.length, dir: this.dir });
     }
-    if (out.say) {
+    // The README is a handoff log of what was BUILT — keep the substantive steps
+    // (state-changing actions, resource configs), not navigation, pointing, or
+    // "let me take a fresh look" recovery chatter that clutters the record.
+    const substantive = out.iac || out.note || (out.tool && ACT_TOOLS.includes(out.tool.name));
+    if (out.say && substantive) {
       const act = out.tool ? ` _(action: ${out.tool.name}${out.tool.targetName ? ` → ${out.tool.targetName}` : ''})_` : '';
       this.steps.push(`${out.say}${act}`);
     }
-    if (out.note || out.iac || out.say) this.writeArtifacts();
+    if (out.note || out.iac || substantive) this.writeArtifacts();
   }
 
   /** Compact per-turn user payload: learner words + fresh page state. */
