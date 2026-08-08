@@ -290,6 +290,34 @@ window.tony.on('observer-error', (e) => {
   if (e.fatal) notice(`Observer stopped: ${e.message}`);
 });
 
+// The Terraform hand-off. The chip appears the moment Tony emits his first IaC
+// block; one click zips main.tf + README into Downloads and reveals it. This is
+// the reproducible artifact an architect passes to a developer.
+const filebox = document.getElementById('filebox');
+window.tony.on('artifact', ({ tf, resources }) => {
+  if (!tf) return;                        // only surface once there's Terraform
+  const n = resources || 0;
+  document.getElementById('fb-sub').textContent =
+    n ? `${n} resource${n === 1 ? '' : 's'} · Terraform` : 'Terraform ready';
+  filebox.classList.add('show');
+});
+
+filebox?.addEventListener('click', async () => {
+  if (filebox.dataset.busy === 'true') return;
+  filebox.dataset.busy = 'true';
+  const action = document.getElementById('fb-action');
+  action.textContent = 'Saving…';
+  const res = await window.tony.downloadArtifacts();
+  if (res.ok) {
+    action.textContent = 'Saved ✓';
+    setTimeout(() => { action.textContent = 'Download'; filebox.dataset.busy = 'false'; }, 2500);
+  } else {
+    action.textContent = 'Retry';
+    notice(`Download failed: ${res.error}`);
+    filebox.dataset.busy = 'false';
+  }
+});
+
 // Mode buttons were removed with the compact circular card; the mode defaults
 // to walk_through and remains settable via the set-mode IPC when a control
 // surface returns (tray menu, voice command, ...).

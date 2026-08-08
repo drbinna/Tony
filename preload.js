@@ -10,7 +10,7 @@ contextBridge.exposeInMainWorld('tony', {
   on: (channel, fn) => {
     const allowed = [
       'speak', 'speak-followup', 'state', 'screen', 'hotkey',
-      'permissions', 'observer-error', 'deadman-abort', 'notice',
+      'permissions', 'observer-error', 'deadman-abort', 'notice', 'artifact',
     ];
     if (!allowed.includes(channel)) return () => {};
     const handler = (_e, payload) => fn(payload);
@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('tony', {
   setMode: (mode) => ipcRenderer.invoke('set-mode', mode),
   setAccountKind: (kind) => ipcRenderer.invoke('set-account-kind', kind),
   cacheReport: () => ipcRenderer.invoke('cache-report'),
+  downloadArtifacts: () => ipcRenderer.invoke('download-artifacts'),
   learnerInput: () => ipcRenderer.send('learner-input'),
   heard: (text) => ipcRenderer.send('heard', text),
   // Anam lifecycle breadcrumbs for the session transcript. Event names only —

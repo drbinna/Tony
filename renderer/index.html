@@ -137,6 +137,35 @@
   body[data-state="idle"]      { --ring: rgba(255,255,255,.08); }
   body[data-state="paused"]    { --ring: rgba(255,255,255,.14); }
 
+  /* ── filebox: the Terraform hand-off, downloadable the moment it exists ── */
+  #filebox {
+    display: none; width: 100%;
+    align-items: center; gap: 8px;
+    padding: 7px 10px;
+    background: var(--shell);
+    border: 1px solid rgba(63,208,122,.28);
+    border-radius: 10px;
+    font-size: 11px; color: var(--bone);
+    -webkit-app-region: no-drag; cursor: pointer;
+    transition: border-color .15s ease, background .15s ease;
+  }
+  #filebox.show { display: flex; }
+  #filebox:hover { border-color: var(--goblin); background: #172420; }
+  #filebox .fb-icon { font-size: 14px; flex: none; }
+  #filebox .fb-text { flex: 1; min-width: 0; line-height: 1.25; }
+  #filebox .fb-title { font-weight: 600; }
+  #filebox .fb-sub {
+    font-family: var(--mono); font-size: 8.5px; letter-spacing: .04em;
+    color: var(--slate); text-transform: uppercase;
+  }
+  #filebox .fb-action {
+    flex: none; font-family: var(--mono); font-size: 9px; font-weight: 700;
+    letter-spacing: .08em; text-transform: uppercase;
+    color: var(--goblin);
+  }
+  #filebox[data-busy="true"] { pointer-events: none; opacity: .7; }
+  #filebox[data-busy="true"] .fb-action { color: var(--slate); }
+
   /* ── blocking notice ─────────────────────────────────────────────────── */
   #notice {
     display: none; width: 100%; padding: 10px 12px;
@@ -176,6 +205,15 @@
     </div>
 
     <div id="speech"></div>
+
+    <div id="filebox" title="Save the Terraform + README to your Downloads">
+      <span class="fb-icon">📦</span>
+      <span class="fb-text">
+        <span class="fb-title">lesson.zip</span>
+        <span class="fb-sub" id="fb-sub">Terraform ready</span>
+      </span>
+      <span class="fb-action" id="fb-action">Download</span>
+    </div>
 
     <div id="notice"></div>
   </div>

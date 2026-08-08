@@ -334,17 +334,20 @@ app.whenReady().then(async () => {
   if (LESSON_MODE) {
     const region = process.env.TONY_REGION || 'us-east-1';
     const lessonConfig = {
-      accountAlias: process.env.TONY_ACCOUNT_ALIAS || 'GoblinLabs sandbox',
+      accountAlias: process.env.TONY_ACCOUNT_ALIAS || 'Goblin Labs AWS tutor',
       region,
       level: process.env.TONY_LEVEL || 'beginner',
       lessonGoal: process.env.TONY_LESSON_GOAL || 'get comfortable in the AWS console by doing',
     };
     const speak = (text) => send('speak', { text, via: 'cache' });
+    // The lesson tells the overlay when its handoff files are ready, so a
+    // download chip can appear the moment Tony emits the first Terraform block.
+    const onArtifact = (info) => send('artifact', info);
 
     if (EXT_MODE) {
       const bridge = new ExtensionBridge({ log: console });
       pilot = bridge;   // Pilot-compatible surface; will-quit close() applies
-      lesson = new Lesson({ brain, pilot: bridge, transcript, speak, config: lessonConfig, artifactsDir: dirs.artifacts });
+      lesson = new Lesson({ brain, pilot: bridge, transcript, speak, config: lessonConfig, artifactsDir: dirs.artifacts, onArtifact });
       console.log(`[lesson] handoff artifacts -> ${lesson.dir}`);
       bridge.listen()
         .then(() => {
@@ -358,7 +361,7 @@ app.whenReady().then(async () => {
         });
     } else {
       pilot = new Pilot({ userDataDir: path.join(app.getPath('userData'), 'lesson-profile') });
-      lesson = new Lesson({ brain, pilot, transcript, speak, config: lessonConfig, artifactsDir: dirs.artifacts });
+      lesson = new Lesson({ brain, pilot, transcript, speak, config: lessonConfig, artifactsDir: dirs.artifacts, onArtifact });
       pilot.launch(`https://${region}.console.aws.amazon.com/console/home?region=${region}`)
         .then(() => {
           transcript.log('pilot-ready', { mode: 'playwright', url: pilot.url() });
@@ -748,6 +751,33 @@ ipcMain.handle('set-account-kind', (_e, kind) => {
 });
 
 ipcMain.handle('cache-report', () => brain.cache.report());
+
+// One-click hand-off: zip the lesson folder (main.tf + README.md) into the
+// learner's Downloads and reveal it in Finder. This is the reproducible
+// artifact a solution architect passes to a developer.
+ipcMain.handle('download-artifacts', async () => {
+  const fs = require('fs');
+  const { execFile } = require('child_process');
+  try {
+    const dir = lesson?.dir;
+    if (!dir || !fs.existsSync(dir)) return { ok: false, error: 'No lesson files yet — build something first.' };
+    const stamp = path.basename(dir);
+    const zipPath = path.join(app.getPath('downloads'), `tony-lesson-${stamp}.zip`);
+    // ditto is the macOS-native zipper; --keepParent so it unzips as a named
+    // folder rather than loose files. --norsrc/--noextattr drop AppleDouble
+    // "._" files so the archive is clean when a developer opens it elsewhere.
+    await new Promise((resolve, reject) => {
+      execFile('/usr/bin/ditto', ['-c', '-k', '--keepParent', '--norsrc', '--noextattr', dir, zipPath],
+        (err) => (err ? reject(err) : resolve()));
+    });
+    shell.showItemInFolder(zipPath);
+    transcript?.log('artifact-download', { zip: zipPath });
+    return { ok: true, path: zipPath };
+  } catch (e) {
+    transcript?.log('artifact-download', { ok: false, error: e.message.slice(0, 200) });
+    return { ok: false, error: e.message };
+  }
+});
 
 ipcMain.on('learner-input', () => abortDriving('learner input'));
 

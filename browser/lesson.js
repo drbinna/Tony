@@ -23,11 +23,12 @@ const ACT_TOOLS = ['click', 'type', 'press', 'goto'];
 const LOOK_TOOLS = ['highlight', 'snapshot', 'screenshot'];
 
 class Lesson {
-  constructor({ brain, pilot, transcript, speak, config, artifactsDir, log = console }) {
+  constructor({ brain, pilot, transcript, speak, config, artifactsDir, onArtifact = null, log = console }) {
     this.brain = brain;
     this.pilot = pilot;
     this.transcript = transcript;
     this.speak = speak;             // (text) => void — hands speech to Anam
+    this.onArtifact = onArtifact;   // (info) => void — tells the UI files are ready
     this.log = log;
     this.system = buildPilotSystem(config);
     this.history = [];
@@ -71,6 +72,13 @@ class Lesson {
           : '_No resources were created this session._',
       ].join('\n');
       fs.writeFileSync(path.join(this.dir, 'README.md'), `${md}\n`);
+      // Let the overlay surface a download chip once there's Terraform to hand
+      // off. Fired on every rewrite so the resource count stays current.
+      this.onArtifact?.({
+        dir: this.dir,
+        tf: this.iacBlocks.length > 0,
+        resources: this.resources.length,
+      });
     } catch (e) {
       this.log.warn?.(`[lesson] artifact write failed: ${e.message}`);
     }
