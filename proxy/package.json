@@ -2,6 +2,6 @@
   "name": "tony-proxy",
   "version": "0.1.0",
   "private": true,
-  "description": "Key proxy for the Tony app: holds the Fireworks/Anam/OpenRouter credentials behind access codes so builds of the app ship with no secrets.",
+  "description": "Key proxy for the Tony app: holds the Fireworks/Anam credentials behind access codes so builds of the app ship with no secrets.",
   "engines": { "node": ">=18" }
 }
