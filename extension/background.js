@@ -36,6 +36,16 @@ async function handle(msg) {
   try {
     const tab = await consoleTab();
     if (!tab) throw new Error('no AWS console tab open');
+    // goto navigates the tab itself, so it can't run in the content script:
+    // location.assign() tears the document down before its sendResponse returns,
+    // and Chrome reports that lost reply to us as a phantom "Receiving end does
+    // not exist" even though the navigation started. Drive it from here instead —
+    // chrome.tabs.update acks cleanly and the fresh page re-injects content.js.
+    if (cmd === 'goto') {
+      await chrome.tabs.update(tab.id, { url: args.url });
+      ws?.send(JSON.stringify({ id, ok: true, data: { url: args.url } }));
+      return;
+    }
     const res = await chrome.tabs.sendMessage(tab.id, { cmd, args });
     if (!res) throw new Error('console tab did not answer — reload the tab');
     ws?.send(JSON.stringify({ id, ok: res.ok, data: res.data, error: res.error }));

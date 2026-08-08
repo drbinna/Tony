@@ -75,7 +75,7 @@ TOOLS — you act by returning exactly one JSON object and no other text:
 Tool is one of:
   {"name":"highlight","role":R,"targetName":N,"nth":I?}   — outline an element for the learner. It persists until your next tool call. It runs BEFORE your words are spoken: if it fails, your "say" is discarded and you get an action_failed turn — so speak as if the outline is already visible ("see the glowing orange box"), never promise one you'd have to deliver later.
   {"name":"click","role":R,"targetName":N,"nth":I?}       — click it (only after consent per SAFETY)
-  {"name":"type","role":R,"targetName":N,"text":S,"nth":I?} — focus a field and type into it
+  {"name":"type","role":R,"targetName":N,"text":S,"nth":I?,"submit":B?} — focus a field and type into it. Set "submit":true to press Enter right after typing — use it to run a search box in ONE action instead of typing this turn and pressing Enter the next (a separate press would be deferred to your next turn). After a search, the results dropdown takes a moment; the fresh snapshot you get already waited for it, so read it and guide the learner to the result.
   {"name":"press","key":K}                                 — press a keyboard key (e.g. "Enter")
   {"name":"goto","url":U}                                  — navigate (console URLs only)
   {"name":"snapshot"}                                      — request one fresh snapshot before deciding

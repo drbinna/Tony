@@ -150,6 +150,11 @@ class Lesson {
           break;
         case 'type':
           await this.pilot.type({ role: tool.role, name: tool.targetName, nth: tool.nth ?? 0 }, tool.text ?? '');
+          // A search box is one gesture: type, then submit. Folding Enter into
+          // the same act keeps it within one-action-per-turn — otherwise the
+          // follow-up press lands on the look-only confirm turn and is deferred,
+          // and Tony loops asking the learner to submit for him (observed live).
+          if (tool.submit) await this.pilot.press('Enter');
           break;
         case 'press':
           await this.pilot.press(tool.key || 'Enter');
@@ -206,10 +211,14 @@ class Lesson {
 
       if (!res) res = await this.execute(out.tool);
 
-      // The console SPA needs a beat to render after navigation — confirming
+      // The console SPA needs a beat to render after an action — confirming
       // instantly reads the OLD page and Tony reports "nothing changed" on
-      // clicks that worked (observed live twice). Let it settle first.
-      if (res.ok && ['click', 'goto', 'press'].includes(out.tool.name)) {
+      // clicks that worked (observed live twice). Typing counts too: the
+      // unified-search autocomplete debounces, so a confirm snapshot taken the
+      // instant a query is typed shows an empty dropdown and Tony wrongly reads
+      // the type as a no-op, then reaches for Enter on the look-only confirm
+      // turn (observed live). Let it settle first.
+      if (res.ok && ['click', 'goto', 'press', 'type'].includes(out.tool.name)) {
         await new Promise((r) => setTimeout(r, 1800));
       }
 
