@@ -35,3 +35,6 @@ proxy/.vercel/
 
 # Notarization credentials (app-specific password) — never commit
 build/notarize.env
+
+# Vercel project link (landing site deploys)
+site/.vercel/
