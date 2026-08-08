@@ -6,8 +6,8 @@
  * Credentials resolve in this order:
  *   1. proxy mode — an ACCESS CODE, from userData/config.json (written by the
  *      first-run setup window) or TONY_ACCESS_CODE in the env. All three
- *      upstreams (Fireworks brain, Anam avatar, OpenRouter vision) route
- *      through the hosted key proxy; a distributed build holds no real keys.
+ *      upstreams (Fireworks brain + vision, Anam avatar) route through the
+ *      hosted key proxy; a distributed build holds no real keys.
  *   2. local mode — raw API keys in .env: the dev workflow, unchanged.
  *
  * Avatar identity is configuration, not secret: the defaults are baked so a
@@ -85,7 +85,6 @@ function resolveCreds(userDataPath) {
       fireworksBearer: process.env.FIREWORKS_API_KEY,
       anamTokenUrl: null,
       anamBearer: process.env.ANAM_API_KEY,
-      vision: null,           // Grounder falls back to its own env logic
     };
   }
 
@@ -103,7 +102,6 @@ function proxyCreds(accessCode, user) {
     fireworksBearer: accessCode,
     anamTokenUrl: `${base}/api/anam-token`,
     anamBearer: accessCode,
-    vision: { baseURL: `${base}/api/vision`, apiKey: accessCode, provider: 'proxy' },
   };
 }
 

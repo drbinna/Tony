@@ -71,7 +71,6 @@
   },
   "dependencies": {
     "@anam-ai/js-sdk": "^2.0.0",
-    "@anthropic-ai/sdk": "^0.115.0",
     "dotenv": "^16.4.5",
     "playwright-core": "^1.62.1",
     "ws": "^8.21.1"

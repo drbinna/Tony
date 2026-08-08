@@ -5,98 +5,68 @@
  * The AX tree gives exact bounds but only for elements that expose themselves
  * (unlabeled picker rows and canvas regions measured blind tonight). This
  * module grounds a natural-language target description on a LIVE SCREENSHOT
- * via Claude and returns screen coordinates. It is the PRIMARY targeting path
- * when configured; the AX lookup remains only for when no key is present.
- *
- * SCOPE: this drives the OBSERVER path only (screenshot -> coordinates ->
- * CGEvent cursor). In extension mode the browser highlights/clicks DOM elements
- * directly, so ground() is never called and no Screen Recording permission is
- * needed there — the Grounder is constructed but dormant.
+ * and returns screen coordinates. It is the PRIMARY targeting path when a
+ * vision model is configured; the AX lookup remains only for when it is not.
  *
  * Coordinate math: screencapture writes physical (Retina) pixels; we resample
- * to the LOGICAL display resolution before sending, so the coordinates Claude
- * returns are usable CGEvent screen coordinates with no scale factor.
+ * to the LOGICAL display resolution before sending, so the pixel coordinates
+ * the model returns are usable CGEvent screen coordinates with no scale factor.
  *
- * Credentials, in priority order (constructor picks the first available):
- *   1. vision option    — the hosted key proxy (apiKey is the user's access
- *      code); how distributed builds ground with no real key on disk.
- *   2. OPENROUTER_API_KEY — OpenRouter's Anthropic-compatible endpoint.
- *   3. ANTHROPIC_API_KEY  — the direct API, with strict structured outputs.
- * With none of these set, the Grounder boots disabled rather than throwing.
- * When it runs it also needs macOS Screen Recording permission. Latency is a
- * Claude round trip (~1-4s) — off the critical path, covered by the bridge
- * like every other model call.
+ * Model: a Fireworks-hosted VLM on the same OpenAI-compatible chat/completions
+ * endpoint (and same FIREWORKS_API_KEY / proxy) as the brain — no separate
+ * credential and no Anthropic dependency. Default is qwen3p7-plus, the fastest
+ * of the account's vision models that still grounds accurately (~2s/call); the
+ * heavier Kimi vision models reason for 15-30s per call, too slow to point
+ * with. We run it at reasoning_effort 'low' — enough to actually locate the
+ * element, but the thinking lands in reasoning_content so `content` is clean
+ * JSON. Override with TONY_VISION_MODEL. We ask for a bounding box — the VLM's
+ * native grounding format — and derive the click center from it. With no key
+ * the Grounder boots disabled rather than throwing. Latency is one round trip,
+ * off the critical path, covered by the bridge like every other model call.
  */
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const Anthropic = require('@anthropic-ai/sdk');
 
-const GROUND_SCHEMA = {
-  type: 'object',
-  properties: {
-    found: { type: 'boolean' },
-    x: { type: 'integer', description: 'center x of the element, in image pixels' },
-    y: { type: 'integer', description: 'center y of the element, in image pixels' },
-    width: { type: 'integer', description: 'approximate element width in pixels' },
-    height: { type: 'integer', description: 'approximate element height in pixels' },
-    label: { type: 'string', description: 'the visible text or a short name of what was located' },
-  },
-  required: ['found', 'x', 'y', 'width', 'height', 'label'],
-  additionalProperties: false,
-};
+const FIREWORKS = 'https://api.fireworks.ai/inference/v1/chat/completions';
+const DEFAULT_MODEL = 'accounts/fireworks/models/qwen3p7-plus';
 
 class Grounder {
   /**
-   * @param {{width:number, height:number}} logicalSize primary display logical resolution
+   * @param {{width:number, height:number, fireworksKey?:string, fireworksUrl?:string}} opts
+   *   primary display logical resolution plus the same Fireworks credential the
+   *   brain uses (fireworksUrl is set only in proxy mode; else the direct API).
    */
-  constructor({ width, height, log = console, vision = null } = {}) {
+  constructor({ width, height, log = console, fireworksKey = null, fireworksUrl = null } = {}) {
     this.width = width;
     this.height = height;
     this.log = log;
     this.shotPath = path.join(os.tmpdir(), 'tony-ground.png');
-    // Three ways in, proxy first (distributed builds hold no real keys):
-    //  - vision option        -> the hosted key proxy's Anthropic-compatible
-    //    endpoint; apiKey is the user's access code.
-    //  - OPENROUTER_API_KEY -> OpenRouter's Anthropic-Messages-compatible
-    //    endpoint (base https://openrouter.ai/api, tilde model ids). Their
-    //    router may not pass output_config through, so this path enforces
-    //    the JSON contract by prompt and parses defensively.
-    //  - ANTHROPIC_API_KEY  -> direct API with strict structured outputs.
-    // The SDK constructor THROWS with no key — guard so a keyless launch
-    // boots with vision disabled instead of dead.
-    if (vision?.apiKey) {
-      this.provider = vision.provider || 'proxy';
-      this.model = vision.model || process.env.TONY_VISION_MODEL || '~anthropic/claude-opus-latest';
-      this.client = new Anthropic({ apiKey: vision.apiKey, baseURL: vision.baseURL });
-    } else if (process.env.OPENROUTER_API_KEY) {
-      this.provider = 'openrouter';
-      this.model = process.env.TONY_VISION_MODEL || '~anthropic/claude-opus-latest';
-      this.client = new Anthropic({
-        apiKey: process.env.OPENROUTER_API_KEY,
-        baseURL: 'https://openrouter.ai/api',
-      });
-    } else if (process.env.ANTHROPIC_API_KEY) {
-      this.provider = 'anthropic';
-      this.model = process.env.TONY_VISION_MODEL || 'claude-opus-4-8';
-      this.client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    // Vision rides the brain's Fireworks credential. In proxy mode fireworksUrl
+    // is the /api/chat passthrough (the VLM is just another model on the same
+    // chat/completions endpoint, so it needs no separate proxy route). With no
+    // key the Grounder boots disabled instead of dead.
+    this.key = fireworksKey || process.env.FIREWORKS_API_KEY || null;
+    this.url = fireworksUrl || FIREWORKS;
+    if (this.key) {
+      this.provider = 'fireworks';
+      this.model = process.env.TONY_VISION_MODEL || DEFAULT_MODEL;
     } else {
       this.provider = null;
       this.model = null;
-      this.client = null;
     }
   }
 
   enabled() {
-    return this.client !== null;
+    return this.key !== null;
   }
 
   /** Screenshot at logical resolution, base64 PNG. */
   capture() {
     execFileSync('/usr/sbin/screencapture', ['-x', this.shotPath], { timeout: 8000 });
     if (this.width && this.height) {
-      // -z resamples to exactly logical HxW: Claude's pixel coords become
+      // -z resamples to exactly logical HxW: the model's pixel coords become
       // CGEvent screen coords 1:1, and the image is half the tokens.
       execFileSync('/usr/bin/sips', ['-z', String(this.height), String(this.width), this.shotPath],
         { timeout: 8000, stdio: 'ignore' });
@@ -112,42 +82,72 @@ class Grounder {
   async ground(target) {
     const data = this.capture();
     const instructions =
-      `This is a ${this.width}x${this.height} screenshot of a computer screen. `
+      `This is a ${this.width}x${this.height} pixel screenshot of a computer screen. `
       + `Locate this UI element: "${target}". `
-      + `Return the CENTER pixel coordinates of the exact clickable element and its approximate size. `
-      + `If it is not visible on screen, return found=false.`;
+      + `Return its bounding box in ACTUAL image pixels as [x1, y1, x2, y2] (top-left, bottom-right). `
+      + `If it is not visible on screen, set found to false. `
+      + 'Respond with ONLY a JSON object, no prose and no markdown fences: '
+      + '{"found": boolean, "box": [x1, y1, x2, y2], "label": string} '
+      + 'where label is the visible text or a short name of what you located.';
 
-    const req = {
+    const body = {
       model: this.model,
-      max_tokens: 500,
+      max_tokens: 3072,          // reasoning + JSON; smaller budgets truncate
+      temperature: 0,
+      reasoning_effort: 'low',   // 'none' fails to locate; 'low' grounds in ~2s.
+      // No response_format: forcing json_object makes this model spill its
+      // reasoning into `content` (then truncate) instead of reasoning_content;
+      // left off, content is clean JSON and we parse the last object defensively.
       messages: [{
         role: 'user',
         content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/png', data } },
+          { type: 'image_url', image_url: { url: `data:image/png;base64,${data}` } },
           { type: 'text', text: instructions },
         ],
       }],
     };
 
-    if (this.provider === 'anthropic') {
-      // Direct API: strict structured outputs guarantee the shape.
-      req.output_config = {
-        effort: 'low',   // perception task; latency matters more than depth
-        format: { type: 'json_schema', schema: GROUND_SCHEMA },
-      };
-    } else {
-      // OpenRouter compat path: enforce by prompt, parse defensively below.
-      req.messages[0].content[1].text += ' Respond with ONLY a JSON object: '
-        + '{"found": boolean, "x": int, "y": int, "width": int, "height": int, "label": string}. '
-        + 'No prose, no markdown fences.';
+    const res = await fetch(this.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.key}` },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`${this.model}: ${res.status} ${(await res.text()).slice(0, 200)}`);
+    const json = await res.json();
+    const msg = json.choices?.[0]?.message ?? {};
+    // The JSON usually lands in `content`; this model occasionally spills it
+    // into `reasoning_content` instead, so check both before giving up.
+    const raw = Grounder.parseJson(msg.content || '') || Grounder.parseJson(msg.reasoning_content || '');
+    const usage = { in: json.usage?.prompt_tokens, out: json.usage?.completion_tokens };
+    if (!raw) {
+      // Unparseable (or truncated mid-reason) -> degrade to a clean miss so Tony
+      // re-looks, rather than throwing an error state into the turn.
+      this.log.warn?.(`[vision] unparseable grounding for "${target}": ${(msg.content || '').slice(0, 100)}`);
+      return { found: false, x: 0, y: 0, width: 0, height: 0, label: '', usage };
     }
-
-    const res = await this.client.messages.create(req);
-    const text = res.content.find((b) => b.type === 'text')?.text ?? '{}';
-    const out = Grounder.parseJson(text);
-    if (!out) throw new Error(`grounding returned unparseable output: ${text.slice(0, 120)}`);
-    out.usage = { in: res.usage?.input_tokens, out: res.usage?.output_tokens };
+    const out = Grounder.fromBox(raw);
+    out.usage = usage;
     return out;
+  }
+
+  /** Convert the model's {found, box:[x1,y1,x2,y2], label} into center+size. */
+  static fromBox(raw) {
+    if (!raw.found || !Array.isArray(raw.box) || raw.box.length !== 4) {
+      return { found: false, x: 0, y: 0, width: 0, height: 0, label: raw.label || '' };
+    }
+    const [x1, y1, x2, y2] = raw.box.map(Number);
+    const left = Math.min(x1, x2);
+    const top = Math.min(y1, y2);
+    const width = Math.abs(x2 - x1);
+    const height = Math.abs(y2 - y1);
+    return {
+      found: true,
+      x: Math.round(left + width / 2),
+      y: Math.round(top + height / 2),
+      width: Math.round(width),
+      height: Math.round(height),
+      label: raw.label || '',
+    };
   }
 
   /** Extract the last balanced JSON object — tolerates fences and prose. */

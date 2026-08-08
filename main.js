@@ -261,10 +261,14 @@ app.whenReady().then(async () => {
 
   pointer = new Pointer();
   driver = new Driver();
-  grounder = new Grounder({ ...screen.getPrimaryDisplay().size, vision: creds.vision });
+  grounder = new Grounder({
+    ...screen.getPrimaryDisplay().size,
+    fireworksKey: creds.fireworksBearer,
+    fireworksUrl: creds.fireworksUrl,
+  });
   console.log(`[vision] grounding ${grounder.enabled()
     ? `ENABLED via ${grounder.provider} (${grounder.model})`
-    : 'disabled — set OPENROUTER_API_KEY or ANTHROPIC_API_KEY in .env'}`);
+    : 'disabled — set FIREWORKS_API_KEY in .env'}`);
   observer = new Observer({ intervalMs: Number(process.env.TICK_MS) || 1500 });
 
   // Screen change is the strongest precompute signal: the learner just landed
@@ -449,9 +453,9 @@ function ringFromAction(rawAction, askFrame) {
     return;
   }
   const action = brain.sanitizeAction(rawAction);
-  // PRIMARY targeting path: Claude vision grounds the action's natural-language
-  // target on a live screenshot. The AX-tree lookup below only runs when no
-  // Anthropic key is configured or the brain omitted a target description.
+  // PRIMARY targeting path: the Fireworks VLM grounds the action's natural-
+  // language target on a live screenshot. The AX-tree lookup below only runs
+  // when no vision key is configured or the brain omitted a target description.
   if (grounder?.enabled() && action.target && ['point', 'click', 'type', 'scroll'].includes(action.type)) {
     visionActuate(action).catch((e) => {
       console.error(`[vision] ${e.message}`);
@@ -638,7 +642,7 @@ function rememberGrounding(target, g) {
 }
 
 /**
- * Vision-grounded actuation — the computer-use path. Claude locates the
+ * Vision-grounded actuation — the computer-use path. The VLM locates the
  * target on a live screenshot (coordinates come back in logical screen
  * pixels, 1:1 with CGEvent coords); the ring shows what was found; drive.swift
  * performs the gesture with the deadman armed. Every step transcript-logged.
