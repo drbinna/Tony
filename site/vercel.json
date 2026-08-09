@@ -1,13 +1,13 @@
 {
   "redirects": [
     {
-      "source": "/downloads/Tony-0.1.0-arm64.dmg",
-      "destination": "https://ooqgfxkofwc3vswv.public.blob.vercel-storage.com/Tony-0.1.0-arm64.dmg",
+      "source": "/downloads/Tony-arm64.dmg",
+      "destination": "https://ooqgfxkofwc3vswv.public.blob.vercel-storage.com/Tony-arm64.dmg",
       "statusCode": 307
     },
     {
-      "source": "/downloads/Tony-0.1.0-x64.dmg",
-      "destination": "https://ooqgfxkofwc3vswv.public.blob.vercel-storage.com/Tony-0.1.0-x64.dmg",
+      "source": "/downloads/Tony-x64.dmg",
+      "destination": "https://ooqgfxkofwc3vswv.public.blob.vercel-storage.com/Tony-x64.dmg",
       "statusCode": 307
     }
   ]
