@@ -116,25 +116,34 @@ function locate({ role, name, nth = 0 }) {
   const matches = collect().filter((c) =>
     c.role === role && (c.name.toLowerCase() === want || c.name.toLowerCase().includes(want)));
   if (!matches.length) throw new Error(`no visible ${role} matching "${name}" (found 0)`);
-  // A page can expose several elements whose accessible name matches — e.g. the
-  // real S3 "Create bucket" submit button (a wide button below the fold) plus a
-  // tiny info/icon affordance whose label merely contains "Create bucket" and
-  // sits scrolled off the top of the page. First-in-DOM-order grabbed the wrong
-  // one: the click reported ok but only opened the Help panel and never
-  // submitted. Rank so the genuine target wins — exact name over substring, an
-  // element in the positive coordinate space over one scrolled fully off the
-  // top/left, and larger over tiny — then index nth into that best-first order.
+  // A page can expose several elements whose ACCESSIBLE name matches while only
+  // one is the control the learner sees. The S3 "Create bucket" / "Delete
+  // bucket" pages each carry a Cloudscape "Info" icon next to the heading; that
+  // icon has no visible text of its own but borrows the heading's label via
+  // aria-labelledby, so nameOf() reports its name as "Delete bucket" too. Taking
+  // the first DOM match grabbed that icon — the click reported ok but only
+  // opened the Help panel and never submitted. Rank so the genuine target wins:
+  //   ownText  — the element's OWN visible text says the label (the real button)
+  //              vs. a name merely borrowed via aria-labelledby (the info icon)
+  //   exact    — accessible name equals the query rather than just contains it
+  //   notHidden— rendered in positive coordinate space, not scrolled off top/left
+  //   area     — a real button beats a tiny icon
+  // Then index nth into that best-first order.
   const ranked = matches
     .map((c) => {
-      const r = c.el.getBoundingClientRect();
+      const el = c.el;
+      const r = el.getBoundingClientRect();
+      const own = (el.innerText || el.value || '').trim().toLowerCase();
       return {
         c,
+        ownText: own.includes(want) ? 1 : 0,
         exact: c.name.toLowerCase() === want ? 1 : 0,
         notHidden: r.bottom > 0 && r.right > 0 ? 1 : 0,
         area: Math.max(0, r.width) * Math.max(0, r.height),
       };
     })
-    .sort((a, b) => b.exact - a.exact || b.notHidden - a.notHidden || b.area - a.area);
+    .sort((a, b) =>
+      b.ownText - a.ownText || b.exact - a.exact || b.notHidden - a.notHidden || b.area - a.area);
   return (ranked[nth] || ranked[0]).c;
 }
 
