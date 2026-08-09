@@ -46,8 +46,25 @@ jobs:
           npm run build
           npx electron-builder --mac -c.mac.notarize=true --publish never
 
-      - name: Staple notarization tickets to the DMG containers
-        run: for d in dist/*.dmg; do xcrun stapler staple "$d"; done
+      # electron-builder notarizes the .app (stapled inside the DMG) but not the
+      # DMG container, so stapling the .dmg with only the app's ticket fails
+      # ("Record not found"). Notarize each DMG here, then staple it, so the
+      # distributable validates offline on first launch.
+      - name: Notarize & staple the DMG containers
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for d in dist/*.dmg; do
+            echo "Notarizing $d"
+            xcrun notarytool submit "$d" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait
+            xcrun stapler staple "$d"
+          done
 
       - name: Upload DMGs to Vercel Blob (stable keys)
         env:
