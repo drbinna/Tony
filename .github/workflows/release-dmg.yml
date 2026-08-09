@@ -44,7 +44,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           npm run build
-          npx electron-builder --mac -c.mac.notarize=true
+          npx electron-builder --mac -c.mac.notarize=true --publish never
 
       - name: Staple notarization tickets to the DMG containers
         run: for d in dist/*.dmg; do xcrun stapler staple "$d"; done
