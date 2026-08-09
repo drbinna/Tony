@@ -1,0 +1,72 @@
+name: Release macOS DMG
+
+# Build, sign, notarize and publish the installer on a version tag (e.g. v0.1.1).
+# Uploads both arch DMGs to Vercel Blob under STABLE keys (Tony-arm64.dmg /
+# Tony-x64.dmg) that the landing page's /downloads redirects resolve to, then
+# points the site links at those stable names (idempotent; a no-op after the
+# first release). Notarization takes ~10-15 min.
+#
+# Required repository secrets:
+#   CSC_LINK                     base64 of the Developer ID Application .p12
+#   CSC_KEY_PASSWORD             password for that .p12
+#   APPLE_ID                     Apple ID email for notarytool
+#   APPLE_APP_SPECIFIC_PASSWORD  app-specific password (appleid.apple.com)
+#   APPLE_TEAM_ID                8938U82HGG
+#   BLOB_READ_WRITE_TOKEN        Vercel Blob read-write token
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # package-lock.json is gitignored in this repo, so use install (not ci,
+      # which requires a committed lockfile) and skip the lockfile-hashed cache.
+      - run: npm install
+
+      - name: Build, sign & notarize DMGs
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          npm run build
+          npx electron-builder --mac -c.mac.notarize=true
+
+      - name: Staple notarization tickets to the DMG containers
+        run: for d in dist/*.dmg; do xcrun stapler staple "$d"; done
+
+      - name: Upload DMGs to Vercel Blob (stable keys)
+        env:
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+        run: |
+          node build/upload-blob.mjs "$(ls dist/*arm64.dmg | head -1)" Tony-arm64.dmg
+          node build/upload-blob.mjs "$(ls dist/*x64.dmg | head -1)" Tony-x64.dmg
+
+      - name: Point site downloads at the stable URLs
+        run: node build/normalize-site-links.mjs
+
+      - name: Commit site link normalization if changed
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          if git diff --quiet -- site/; then
+            echo 'site links already stable'
+          else
+            git add site/index.html site/vercel.json
+            git commit -m 'CI: point downloads at stable release URLs [skip ci]'
+            git push origin HEAD:main
+          fi

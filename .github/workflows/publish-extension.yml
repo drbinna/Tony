@@ -1,0 +1,38 @@
+name: Publish extension
+
+# The Chrome extension ships as a static zip in the git-connected site/ folder.
+# Whenever extension/ source changes, rebuild site/downloads/tony-extension.zip
+# and commit it back — Vercel redeploys the site on push. No secrets: the fix
+# reaches the download the moment it lands on main.
+on:
+  push:
+    branches: [main]
+    paths: ['extension/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  zip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build extension zip
+        run: |
+          rm -f site/downloads/tony-extension.zip
+          cd extension
+          zip -r -X ../site/downloads/tony-extension.zip manifest.json background.js content.js
+
+      - name: Commit if the zip changed
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          if git diff --quiet -- site/downloads/tony-extension.zip; then
+            echo 'extension zip unchanged — nothing to commit'
+          else
+            git add site/downloads/tony-extension.zip
+            git commit -m 'CI: rebuild extension zip [skip ci]'
+            git push
+          fi
