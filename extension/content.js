@@ -115,9 +115,27 @@ function locate({ role, name, nth = 0 }) {
   const want = String(name || '').toLowerCase();
   const matches = collect().filter((c) =>
     c.role === role && (c.name.toLowerCase() === want || c.name.toLowerCase().includes(want)));
-  const hit = matches[nth];
-  if (!hit) throw new Error(`no visible ${role} matching "${name}" (found ${matches.length})`);
-  return hit;
+  if (!matches.length) throw new Error(`no visible ${role} matching "${name}" (found 0)`);
+  // A page can expose several elements whose accessible name matches — e.g. the
+  // real S3 "Create bucket" submit button (a wide button below the fold) plus a
+  // tiny info/icon affordance whose label merely contains "Create bucket" and
+  // sits scrolled off the top of the page. First-in-DOM-order grabbed the wrong
+  // one: the click reported ok but only opened the Help panel and never
+  // submitted. Rank so the genuine target wins — exact name over substring, an
+  // element in the positive coordinate space over one scrolled fully off the
+  // top/left, and larger over tiny — then index nth into that best-first order.
+  const ranked = matches
+    .map((c) => {
+      const r = c.el.getBoundingClientRect();
+      return {
+        c,
+        exact: c.name.toLowerCase() === want ? 1 : 0,
+        notHidden: r.bottom > 0 && r.right > 0 ? 1 : 0,
+        area: Math.max(0, r.width) * Math.max(0, r.height),
+      };
+    })
+    .sort((a, b) => b.exact - a.exact || b.notHidden - a.notHidden || b.area - a.area);
+  return (ranked[nth] || ranked[0]).c;
 }
 
 // --------------------------------------------------------------- highlight
