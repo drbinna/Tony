@@ -52,7 +52,8 @@
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Tony listens so you can talk to him during lessons."
       }
-    }
+    },
+    "icon": "build/icon.icns"
   },
   "scripts": {
     "build:observer": "bash observer/build.sh",
@@ -81,5 +82,9 @@
     "electron": "^43.2.0",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.1"
+  },
+  "author": {
+    "name": "Goblin Labs",
+    "email": "obinnaamadie@gmail.com"
   }
 }
