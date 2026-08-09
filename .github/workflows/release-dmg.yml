@@ -85,5 +85,14 @@ jobs:
           else
             git add site/index.html site/vercel.json
             git commit -m 'CI: point downloads at stable release URLs [skip ci]'
-            git push origin HEAD:main
+            # main can advance during the ~8-min notarize (a concurrent push),
+            # so rebase onto the latest before pushing, and retry the race.
+            for attempt in 1 2 3; do
+              if git push origin HEAD:main; then
+                echo "pushed on attempt $attempt"; break
+              fi
+              echo "push rejected (attempt $attempt); rebasing on origin/main"
+              git fetch origin main
+              git rebase origin/main
+            done
           fi
