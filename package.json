@@ -47,13 +47,27 @@
             "arm64",
             "x64"
           ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
         }
       ],
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Tony listens so you can talk to him during lessons."
       }
     },
-    "icon": "build/icon.icns"
+    "icon": "build/icon.icns",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "drbinna",
+        "repo": "Tony"
+      }
+    ]
   },
   "scripts": {
     "build:observer": "bash observer/build.sh",
@@ -74,6 +88,7 @@
     "@anam-ai/js-sdk": "^2.0.0",
     "@cdktf/hcl2json": "^0.21.0",
     "dotenv": "^16.4.5",
+    "electron-updater": "^6.8.9",
     "playwright-core": "^1.62.1",
     "ws": "^8.21.1"
   },

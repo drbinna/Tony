@@ -59,6 +59,19 @@ download buttons serve the new build (stable URLs, no site edit needed). The
 first release also rewrites the live `Tony-0.1.0-*.dmg` links to the stable
 `Tony-*.dmg` names in the same run, so there is never a broken-download window.
 
+### Auto-update (electron-updater)
+
+Installed apps update themselves — no re-download. The release workflow builds a
+`.zip` (in addition to the DMG) and `--publish always` uploads the DMGs, the
+zip, and `latest-mac.yml` to a **GitHub Release** for the tag. The packaged app
+(`updater.js`) checks that public feed on launch and every 6h, downloads any
+newer version in the background, and installs it on the next quit. Squirrel only
+accepts a **signed** update, which is why the Developer ID signing had to land
+first. The website keeps serving first-install DMGs from Blob; GitHub Releases
+is purely the update feed. Auto-update takes effect from the first installed
+build that ships `updater.js` (v0.1.2+) — a user on an older build must
+re-download once to get onto the self-updating track.
+
 ### Local fallback
 
 The old local path still works if you'd rather not use CI:

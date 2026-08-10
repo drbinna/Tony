@@ -13,6 +13,7 @@ const { Pilot } = require('./browser/pilot');
 const { ExtensionBridge } = require('./browser/bridge');
 const { Lesson } = require('./browser/lesson');
 const { AVATAR_DEFAULTS, resolveCreds, validateAccessCode, writeUserConfig, dataDirs } = require('./config');
+const { initAutoUpdate, installUpdate } = require('./updater');
 
 // Lesson-loop backends, mutually exclusive with the classic observer path:
 //   TONY_EXT=1     — Chrome-extension bridge: Tony guides inside the learner's
@@ -227,6 +228,10 @@ app.whenReady().then(async () => {
     app.dock?.hide();
   }
   createWindow();
+
+  // Background auto-update (packaged app only): checks the GitHub Releases feed,
+  // downloads quietly, installs on the next quit. No-op in dev.
+  initAutoUpdate({ app, send });
 
   const perms = await checkPermissions();
   send('permissions', perms);
@@ -751,6 +756,10 @@ ipcMain.handle('set-account-kind', (_e, kind) => {
 });
 
 ipcMain.handle('cache-report', () => brain.cache.report());
+
+// Apply a downloaded update immediately (renderer's optional "Restart to
+// update"). Auto-update otherwise installs silently on the next quit.
+ipcMain.handle('install-update', () => { installUpdate(); return { ok: true }; });
 
 // One-click hand-off: zip the lesson folder (main.tf + README.md) into the
 // learner's Downloads and reveal it in Finder. This is the reproducible

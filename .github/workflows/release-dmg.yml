@@ -35,16 +35,23 @@ jobs:
       # which requires a committed lockfile) and skip the lockfile-hashed cache.
       - run: npm install
 
-      - name: Build, sign & notarize DMGs
+      # --publish always uploads the DMGs, the auto-update .zip, and the
+      # latest-mac.yml manifest to a GitHub Release for this tag (public repo →
+      # electron-updater in the installed app reads them without auth). The
+      # website still serves DMGs from Vercel Blob (step below); GitHub Releases
+      # is only the auto-update feed. The .app inside the .zip is notarized +
+      # stapled by electron-builder, so Squirrel accepts the update.
+      - name: Build, sign, notarize & publish (GitHub Releases feed)
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           npm run build
-          npx electron-builder --mac -c.mac.notarize=true --publish never
+          npx electron-builder --mac -c.mac.notarize=true --publish always
 
       # electron-builder notarizes the .app (stapled inside the DMG) but not the
       # DMG container, so stapling the .dmg with only the app's ticket fails
