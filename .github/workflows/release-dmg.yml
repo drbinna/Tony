@@ -53,6 +53,17 @@ jobs:
           npm run build
           npx electron-builder --mac -c.mac.notarize=true --publish always
 
+      # electron-builder publishes the feed as a DRAFT (and its multi-arch race
+      # can leave a stray duplicate). Un-draft the complete one so
+      # electron-updater can actually see it. Tag pushes only.
+      - name: Publish the GitHub Release (un-draft + dedupe auto-update feed)
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node build/publish-release.mjs
+
       # electron-builder notarizes the .app (stapled inside the DMG) but not the
       # DMG container, so stapling the .dmg with only the app's ticket fails
       # ("Record not found"). Notarize each DMG here, then staple it, so the
