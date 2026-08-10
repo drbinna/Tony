@@ -79,10 +79,13 @@ class Lesson {
         if (this.tf.hasResources) fs.writeFileSync(path.join(this.dir, 'main.tf'), built.mainTf);
         fs.writeFileSync(path.join(this.dir, 'README.md'), built.readme);
       }
-      // The overlay's download chip keys off tf: true.
-      this.onArtifact?.({ dir: this.dir, tf: this.tf.hasResources, resources: this.tf.resourceCount });
     } catch (e) {
       this.log.warn?.(`[lesson] artifact write failed: ${e.message}`);
+    } finally {
+      // The overlay's files box keys off tf: true — fire it even if the build
+      // gate hiccuped, so a present resource map always surfaces the download
+      // (the last-good main.tf stays on disk).
+      this.onArtifact?.({ dir: this.dir, tf: this.tf.hasResources, resources: this.tf.resourceCount });
     }
   }
 
@@ -116,10 +119,9 @@ class Lesson {
    *  substantive changed. */
   async record(out, confirmed = false) {
     if (out.note) this.resources.push(out.note);
-    // The map and step log accumulate SILENTLY on every confirmed step — the
-    // record has to be complete for whenever it's asked for. But nothing is
-    // written to disk and no download chip appears until the learner actually
-    // asks for the files (out.handoff); we don't prompt them after every step.
+    // The map and step log accumulate on every confirmed step. The files box
+    // surfaces as soon as there is ANY confirmed Terraform (see below) — it must
+    // never hinge on the model emitting a clean handoff turn.
     const touchedTf = confirmed ? await this.commitTf(out) : false;
     // The README's numbered log keeps substantive steps — state changes and
     // resource configs — not navigation, pointing, or recovery chatter.
@@ -128,8 +130,17 @@ class Lesson {
       const act = out.tool ? ` _(action: ${out.tool.name}${out.tool.targetName ? ` → ${out.tool.targetName}` : ''})_` : '';
       this.steps.push(`${out.say}${act}`);
     }
-    if (out.handoff) {
-      this.transcript?.log('tf-handoff', { resources: this.tf.resourceCount });
+    // Surface (and refresh) the download the instant there is confirmed
+    // Terraform — the moment a resource is committed, and again whenever the
+    // learner explicitly asks. This is deliberately DECOUPLED from out.handoff:
+    // the model can spill its reasoning as prose (JSON parse fails, handoff
+    // field is dropped) yet still tell the learner "your files are ready", and
+    // writeArtifacts() can throw after tf-handoff is already logged. Keying the
+    // files box off the real resource map instead means IaC always appears once
+    // it exists. Writing per confirmed step keeps the folder current; the chip
+    // is passive (it just appears in the box), so this doesn't nag the learner.
+    if (out.handoff) this.transcript?.log('tf-handoff', { resources: this.tf.resourceCount });
+    if ((touchedTf || out.handoff) && this.tf.hasResources) {
       await this.writeArtifacts();
     }
   }

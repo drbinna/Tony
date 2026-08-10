@@ -290,8 +290,10 @@ window.tony.on('observer-error', (e) => {
   if (e.fatal) notice(`Observer stopped: ${e.message}`);
 });
 
-// The Terraform hand-off. The chip appears the moment Tony emits his first IaC
-// block; one click zips main.tf + README into Downloads and reveals it. This is
+// The Terraform hand-off. The files box appears as soon as there's confirmed
+// Terraform in the resource map (the moment Tony commits his first resource) and
+// stays put — it is NOT gated on the model's handoff turn, which can fail to
+// parse. One click zips main.tf + README into Downloads and reveals it. This is
 // the reproducible artifact an architect passes to a developer.
 const filebox = document.getElementById('filebox');
 window.tony.on('artifact', ({ tf, resources }) => {
