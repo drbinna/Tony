@@ -234,7 +234,11 @@ class Brain {
     });
     if (!res.ok) throw new Error(`pilot: ${res.status} ${(await res.text()).slice(0, 200)}`);
     const data = await res.json();
-    return data.choices?.[0]?.message?.content?.trim() || '';
+    const msg = data.choices?.[0]?.message ?? {};
+    // A reasoning model sometimes empties `content` and leaves the JSON in
+    // `reasoning_content` (or spills the other way). Return whichever is
+    // non-empty so parseJson gets a shot at either.
+    return msg.content?.trim() || msg.reasoning_content?.trim() || '';
   }
 
   // --------------------------------------------------------- session state

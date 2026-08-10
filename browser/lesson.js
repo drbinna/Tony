@@ -119,9 +119,10 @@ class Lesson {
    *  substantive changed. */
   async record(out, confirmed = false) {
     if (out.note) this.resources.push(out.note);
-    // The map and step log accumulate on every confirmed step. The files box
-    // surfaces as soon as there is ANY confirmed Terraform (see below) — it must
-    // never hinge on the model emitting a clean handoff turn.
+    // The map and step log accumulate SILENTLY on every confirmed step — the
+    // record has to be complete for whenever it's asked for. Nothing is written
+    // to disk and no files box appears until the learner actually asks for the
+    // files (out.handoff); we don't prompt them after every step.
     const touchedTf = confirmed ? await this.commitTf(out) : false;
     // The README's numbered log keeps substantive steps — state changes and
     // resource configs — not navigation, pointing, or recovery chatter.
@@ -130,17 +131,13 @@ class Lesson {
       const act = out.tool ? ` _(action: ${out.tool.name}${out.tool.targetName ? ` → ${out.tool.targetName}` : ''})_` : '';
       this.steps.push(`${out.say}${act}`);
     }
-    // Surface (and refresh) the download the instant there is confirmed
-    // Terraform — the moment a resource is committed, and again whenever the
-    // learner explicitly asks. This is deliberately DECOUPLED from out.handoff:
-    // the model can spill its reasoning as prose (JSON parse fails, handoff
-    // field is dropped) yet still tell the learner "your files are ready", and
-    // writeArtifacts() can throw after tf-handoff is already logged. Keying the
-    // files box off the real resource map instead means IaC always appears once
-    // it exists. Writing per confirmed step keeps the folder current; the chip
-    // is passive (it just appears in the box), so this doesn't nag the learner.
-    if (out.handoff) this.transcript?.log('tf-handoff', { resources: this.tf.resourceCount });
-    if ((touchedTf || out.handoff) && this.tf.hasResources) {
+    // ON-DEMAND: files are written to disk and the files box appears only when
+    // the learner asks (out.handoff), never after every step. This is reliable
+    // now that model() retries a JSON-only reply on a parse failure — the
+    // handoff turn can no longer be silently dropped, which was what made the
+    // box fail to appear even though the learner had asked.
+    if (out.handoff) {
+      this.transcript?.log('tf-handoff', { resources: this.tf.resourceCount });
       await this.writeArtifacts();
     }
   }
@@ -167,8 +164,20 @@ class Lesson {
   }
 
   async model({ fast = false } = {}) {
-    const raw = await this.brain.pilotTurn(this.system, this.history, { fast });
-    const obj = this.brain.constructor.parseJson(raw);
+    let raw = await this.brain.pilotTurn(this.system, this.history, { fast });
+    let obj = this.brain.constructor.parseJson(raw);
+    if (!obj) {
+      // The model sometimes burns its whole budget reasoning in prose and never
+      // emits the JSON object — worst on deliberation-heavy turns like the
+      // handoff, where it "thinks out loud" about setting handoff:true and gets
+      // cut off. Dropping the turn muted Tony and lost the handoff. Re-ask ONCE
+      // on the fast path (reasoning_effort:'none') with a hard JSON-only nudge —
+      // it recovers the turn instead of losing it.
+      this.transcript?.log('parse-retry', { raw: raw.slice(0, 200) });
+      const nudge = { role: 'user', content: 'Your previous reply was not valid JSON. Reply again with ONLY the single JSON object for this turn — the exact schema, no reasoning, no prose, nothing before or after the braces.' };
+      raw = await this.brain.pilotTurn(this.system, [...this.history, nudge], { fast: true });
+      obj = this.brain.constructor.parseJson(raw);
+    }
     if (!obj) {
       this.transcript?.log('parse-failed', { where: 'pilotTurn', raw: raw.slice(0, 400) });
       return { say: null, tool: null, note: null };
