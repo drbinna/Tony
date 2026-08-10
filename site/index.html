@@ -95,15 +95,12 @@
   .badge .d { width: 7px; height: 7px; border-radius: 50%; background: var(--brand); box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 18%, transparent); animation: pulse 2.6s ease-in-out infinite; }
   @keyframes pulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
 
-  /* avatar orb — Tony's face */
+  /* avatar orb — Goblin Labs mark */
   .avatar { border-radius: 50%; position: relative; flex: none;
-    background: radial-gradient(66% 58% at 50% 38%, var(--brand-strong), var(--brand) 58%, color-mix(in srgb, var(--brand) 74%, #000) 100%);
+    background: var(--brand) url("logo.png") center / cover no-repeat;
     border: 2px solid color-mix(in srgb, var(--brand) 80%, #000);
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 10%, transparent), var(--shadow);
   }
-  .avatar::after { content: ""; position: absolute; top: 43%; left: 50%; transform: translateX(-50%);
-    width: 42%; aspect-ratio: 5 / 1;
-    background: radial-gradient(circle at 15% 50%, #F0FFF6 12%, transparent 20%), radial-gradient(circle at 85% 50%, #F0FFF6 12%, transparent 20%); }
 
   /* nav */
   nav { position: sticky; top: 0; z-index: 60; backdrop-filter: blur(14px);
