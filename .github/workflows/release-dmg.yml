@@ -35,6 +35,13 @@ jobs:
       # which requires a committed lockfile) and skip the lockfile-hashed cache.
       - run: npm install
 
+      # Fail fast (before the ~12-min signed build) if an entry file requires a
+      # root module that isn't in build.files — that omission ships an app that
+      # crashes on launch ("Cannot find module './updater'"), which is exactly
+      # how v0.1.2 broke.
+      - name: Verify bundle allowlist
+        run: node build/verify-bundle.mjs
+
       # --publish always uploads the DMGs, the auto-update .zip, and the
       # latest-mac.yml manifest to a GitHub Release for this tag (public repo →
       # electron-updater in the installed app reads them without auth). The

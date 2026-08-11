@@ -15,6 +15,7 @@
       "config.js",
       "preload.js",
       "setup-preload.js",
+      "updater.js",
       "package.json",
       "renderer/**/*",
       "brain/**/*",
