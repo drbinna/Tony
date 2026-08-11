@@ -53,6 +53,12 @@ jobs:
           npm run build
           npx electron-builder --mac -c.mac.notarize=true --publish always
 
+      # Fail before the release goes public if either .app has the wrong arch
+      # (native-only Swift fallback, or a mis-targeted Electron). A bad build
+      # then stays a draft — the un-draft step below never runs.
+      - name: Verify architectures (arm64 + x64 must be correct)
+        run: bash build/verify-arch.sh
+
       # electron-builder publishes the feed as a DRAFT (and its multi-arch race
       # can leave a stray duplicate). Un-draft the complete one so
       # electron-updater can actually see it. Tag pushes only.
