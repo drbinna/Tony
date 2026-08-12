@@ -23,6 +23,16 @@ const MAX_HISTORY = 16;              // messages (8 exchanges) before trimming
 const ACT_TOOLS = ['click', 'type', 'press', 'goto'];
 const LOOK_TOOLS = ['highlight', 'snapshot', 'screenshot'];
 
+// Speed knobs (default = current behaviour; set for a snappy live demo).
+//   TONY_SETTLE_MS   — post-action SPA settle before the confirm snapshot
+//                      (default 1800; ~800 is enough on a warmed account).
+//   TONY_FAST_CONFIRM=1 — run the confirm turn on the fast model. Confirming is
+//                      "look at the fresh page and report", which the fast model
+//                      handles; halves per-action model time. Off by default so
+//                      real lessons keep the slow model's IaC/failure accuracy.
+const SETTLE_MS = Number.parseInt(process.env.TONY_SETTLE_MS ?? '', 10) || 1800;
+const FAST_CONFIRM = process.env.TONY_FAST_CONFIRM === '1';
+
 /** The bundled HCL syntax gate. Loaded defensively: if the parser can't be
  *  required in this build, gating degrades to a warn-only no-op inside
  *  TerraformArtifact rather than disabling hand-off files entirely. */
@@ -273,7 +283,7 @@ class Lesson {
       // the type as a no-op, then reaches for Enter on the look-only confirm
       // turn (observed live). Let it settle first.
       if (res.ok && ['click', 'goto', 'press', 'type'].includes(out.tool.name)) {
-        await new Promise((r) => setTimeout(r, 1800));
+        await new Promise((r) => setTimeout(r, SETTLE_MS));
       }
 
       // Confirm turn: fresh snapshot, speech + look-only tools. This is where
@@ -290,7 +300,7 @@ class Lesson {
         // the exact thing it promised not to do (observed live). Capped so a
         // look-happy model can't spin forever.
         let event = res.ok ? `action_executed: ${out.tool.name}` : `action_failed: ${out.tool.name} — ${res.error}`;
-        let fast = res.ok && ['snapshot', 'screenshot'].includes(out.tool.name);
+        let fast = FAST_CONFIRM || (res.ok && ['snapshot', 'screenshot'].includes(out.tool.name));
         let hlRetried = false;
         for (let pass = 0; pass < 3; pass++) {
           this.push('user', await this.userPayload(null, event));
