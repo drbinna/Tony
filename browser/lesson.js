@@ -18,6 +18,11 @@ const fs = require('fs');
 const path = require('path');
 const { buildPilotSystem } = require('../brain/pilot-prompt');
 const { TerraformArtifact } = require('./terraform');
+const { DemoRail } = require('./demo');
+
+// Scripted, model-free demos. Trigger by voice ("run the ec2 demo") or launch
+// with TONY_DEMO=<key>. Add a key here to register a new one.
+const DEMOS = { ec2: require('./demos/ec2-launch') };
 
 const MAX_HISTORY = 16;              // messages (8 exchanges) before trimming
 const ACT_TOOLS = ['click', 'type', 'press', 'goto'];
@@ -56,6 +61,7 @@ class Lesson {
     this.history = [];
     this.resources = [];            // "type: identifier" lines, teardown list
     this.busy = false;
+    this.demo = null;               // active DemoRail, when a scripted demo runs
 
     // Handoff artifacts: one folder per session.
     this.config = config;
@@ -246,12 +252,46 @@ class Lesson {
     }
   }
 
+  /** Start a scripted demo if the learner asked for one (or TONY_DEMO is set on
+   *  the first turn). Returns true if a demo just started. */
+  async maybeStartDemo(learnerText) {
+    if (this.demo?.active) return false;
+    let key = null;
+    if (!this._demoEnvChecked) {
+      this._demoEnvChecked = true;
+      const env = (process.env.TONY_DEMO || '').toLowerCase();
+      if (DEMOS[env]) key = env;
+    }
+    if (!key) {
+      const t = (learnerText || '').toLowerCase();
+      if (/\bdemo\b/.test(t) && /\b(run|start|begin|do|launch|play)\b/.test(t)) {
+        key = Object.keys(DEMOS).find((k) => t.includes(k)) || null;
+      }
+    }
+    if (!key) return false;
+    this.demo = new DemoRail({
+      script: DEMOS[key], pilot: this.pilot, speak: (s) => this.speak(s),
+      tf: this.tf, writeArtifacts: () => this.writeArtifacts(), transcript: this.transcript, log: this.log,
+    });
+    await this.demo.start();
+    return true;
+  }
+
   /** One learner turn, end to end. */
   async turn(learnerText) {
     if (this.busy) { this.transcript?.log('pilot-turn', { dropped: learnerText, reason: 'busy' }); return; }
     this.busy = true;
     const t0 = Date.now();
     try {
+      // Scripted demo rail: deterministic, no model. A trigger phrase (or
+      // TONY_DEMO) starts it; while it runs, the learner's "go" advances it and
+      // an off-script question falls through to the model for that one turn.
+      if (await this.maybeStartDemo(learnerText)) return;
+      if (this.demo?.active) {
+        const r = await this.demo.input(learnerText);
+        if (r === 'handled') return;   // the rail consumed this turn
+        // 'passthrough' → answer this one off-script question via the model
+      }
       this.push('user', await this.userPayload(learnerText, 'learner_message'));
       const out = await this.model();
       this.push('assistant', JSON.stringify(out));
