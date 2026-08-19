@@ -1,6 +1,6 @@
 {
   "name": "tony-app",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "Tony — goblin cloud tutor overlay. Watches the AWS console via the macOS accessibility tree, speaks through an Anam avatar.",
   "main": "main.js",
