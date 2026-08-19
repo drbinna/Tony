@@ -296,11 +296,13 @@ window.tony.on('observer-error', (e) => {
 // click zips main.tf + README into Downloads and reveals it. This is the
 // reproducible artifact an architect passes to a developer.
 const filebox = document.getElementById('filebox');
-window.tony.on('artifact', ({ tf, resources }) => {
-  if (!tf) return;                        // only surface once there's Terraform
+window.tony.on('artifact', ({ tf, resources, label }) => {
+  if (!tf) return;                        // only surface once there are files
   const n = resources || 0;
+  // A design turn passes an explicit label ("Terraform template · …"); the
+  // console-lesson hand-off falls back to its resource count.
   document.getElementById('fb-sub').textContent =
-    n ? `${n} resource${n === 1 ? '' : 's'} · Terraform` : 'Terraform ready';
+    label || (n ? `${n} resource${n === 1 ? '' : 's'} · Terraform` : 'Terraform ready');
   filebox.classList.add('show');
 });
 
@@ -318,6 +320,24 @@ filebox?.addEventListener('click', async () => {
     notice(`Download failed: ${res.error}`);
     filebox.dataset.busy = 'false';
   }
+});
+
+// Close/exit. The window is frameless, so this button is the only user-facing
+// way to end the session. Tear the Anam session down locally FIRST — stop the
+// stream (releases the mic) and cancel the reconnect/watchdog timers so nothing
+// silently re-opens the session — then ask main to quit. Main's will-quit path
+// closes the lesson browser gracefully before exiting.
+document.getElementById('close')?.addEventListener('click', () => {
+  clearTimeout(reconnectTimer);
+  clearTimeout(connectWatchdog);
+  reconnectTimer = null;
+  connectWatchdog = null;
+  try { anam?.stopStreaming?.(); } catch { /* already down */ }
+  anam = null;
+  setState('idle');
+  els.mic.textContent = 'mic off';
+  els.mic.dataset.live = 'false';
+  window.tony.endSession();
 });
 
 // Mode buttons were removed with the compact circular card; the mode defaults

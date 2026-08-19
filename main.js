@@ -348,11 +348,15 @@ app.whenReady().then(async () => {
     // The lesson tells the overlay when its handoff files are ready, so a
     // download chip can appear the moment Tony emits the first Terraform block.
     const onArtifact = (info) => send('artifact', info);
+    // Design mode opens the architecture diagram for the user; shell.openPath
+    // sends the self-contained HTML to their default browser (full-size — the
+    // bubble is far too small to read an architecture in).
+    const openFile = (p) => shell.openPath(p).then((err) => { if (err) console.warn(`[lesson] openPath: ${err}`); });
 
     if (EXT_MODE) {
       const bridge = new ExtensionBridge({ log: console });
       pilot = bridge;   // Pilot-compatible surface; will-quit close() applies
-      lesson = new Lesson({ brain, pilot: bridge, transcript, speak, config: lessonConfig, artifactsDir: dirs.artifacts, onArtifact });
+      lesson = new Lesson({ brain, pilot: bridge, transcript, speak, config: lessonConfig, artifactsDir: dirs.artifacts, onArtifact, openFile });
       console.log(`[lesson] handoff artifacts -> ${lesson.dir}`);
       bridge.listen()
         .then(() => {
@@ -366,7 +370,7 @@ app.whenReady().then(async () => {
         });
     } else {
       pilot = new Pilot({ userDataDir: path.join(app.getPath('userData'), 'lesson-profile') });
-      lesson = new Lesson({ brain, pilot, transcript, speak, config: lessonConfig, artifactsDir: dirs.artifacts, onArtifact });
+      lesson = new Lesson({ brain, pilot, transcript, speak, config: lessonConfig, artifactsDir: dirs.artifacts, onArtifact, openFile });
       pilot.launch(`https://${region}.console.aws.amazon.com/console/home?region=${region}`)
         .then(() => {
           transcript.log('pilot-ready', { mode: 'playwright', url: pilot.url() });
@@ -848,6 +852,14 @@ ipcMain.on('transcript-note', (_e, event) => {
 
 ipcMain.on('open-accessibility-settings', () => {
   shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility');
+});
+
+// User pressed the bubble's close button. The renderer has already stopped its
+// Anam stream; quit the app. app.quit() routes through will-quit below, which
+// closes the lesson browser gracefully so the console login survives.
+ipcMain.on('end-session', () => {
+  transcript?.log('session-close', { via: 'close-button' });
+  app.quit();
 });
 
 let quitting = false;

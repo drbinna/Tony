@@ -18,6 +18,7 @@ const fs = require('fs');
 const path = require('path');
 const { buildPilotSystem } = require('../brain/pilot-prompt');
 const { TerraformArtifact } = require('./terraform');
+const { DesignArtifact } = require('./design');
 const { DemoRail } = require('./demo');
 
 // Scripted, model-free demos. Trigger by voice ("run the ec2 demo") or launch
@@ -50,12 +51,13 @@ function loadHclParse(log) {
 function asArray(x) { return Array.isArray(x) ? x : (x ? [x] : []); }
 
 class Lesson {
-  constructor({ brain, pilot, transcript, speak, config, artifactsDir, onArtifact = null, log = console }) {
+  constructor({ brain, pilot, transcript, speak, config, artifactsDir, onArtifact = null, openFile = null, log = console }) {
     this.brain = brain;
     this.pilot = pilot;
     this.transcript = transcript;
     this.speak = speak;             // (text) => void — hands speech to Anam
     this.onArtifact = onArtifact;   // (info) => void — tells the UI files are ready
+    this.openFile = openFile;       // (path) => void — opens a file for the user (diagrams)
     this.log = log;
     this.system = buildPilotSystem(config);
     this.history = [];
@@ -68,15 +70,19 @@ class Lesson {
     this.dir = artifactsDir || path.join(__dirname, '..', 'lesson-artifacts',
       new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-'));
     this.steps = [];
+    const parseHcl = loadHclParse(this.log);
     // The Terraform hand-off is rendered from a resource map, never appended:
     // the model reports one confirmed resource at a time and this owns the file.
     this.tf = new TerraformArtifact({
       region: config.region,
       accountAlias: config.accountAlias,
       sessionId: path.basename(this.dir || 'session'),
-      parse: loadHclParse(this.log),
+      parse: parseHcl,
       log: this.log,
     });
+    // Design mode: whole-template generation from a spoken description. Separate
+    // from tf — intent, not console reality — and it writes its own subfolder.
+    this.design = new DesignArtifact({ dir: this.dir, region: config.region, parseHcl, log: this.log });
     try { fs.mkdirSync(this.dir, { recursive: true }); } catch (e) { this.log.warn?.(`[lesson] artifacts disabled: ${e.message}`); this.dir = null; }
   }
 
@@ -155,6 +161,33 @@ class Lesson {
     if (out.handoff) {
       this.transcript?.log('tf-handoff', { resources: this.tf.resourceCount });
       await this.writeArtifacts();
+    }
+  }
+
+  /** A design turn: the model authored a whole template from a description.
+   *  Write it (separate from the console-reality tf), surface the download with
+   *  a design label, and open the diagram so the learner can see the shape of
+   *  what they described. Speak whatever Tony said either way. */
+  async handleDesign(out) {
+    let say = out.say;
+    const res = await this.design.write(out.design);
+    if (!res.ok) {
+      this.log.warn?.(`[lesson] design write failed: ${res.error}`);
+      this.transcript?.log('design', { ok: false, error: res.error });
+      if (say) this.speak(say);
+      return;
+    }
+    this.transcript?.log('design', {
+      ok: true, format: res.format, title: res.title, files: res.files,
+      ...(res.warning ? { warning: res.warning } : {}),
+    });
+    // tf:true only tells the overlay a downloadable folder exists; the label
+    // makes the chip read as a design rather than the console-lesson Terraform.
+    this.onArtifact?.({ dir: this.dir, tf: true, resources: 0, label: res.label });
+    if (say) this.speak(say);
+    if (res.diagramPath && this.openFile) {
+      try { this.openFile(res.diagramPath); }
+      catch (e) { this.log.warn?.(`[lesson] open diagram failed: ${e.message}`); }
     }
   }
 
@@ -294,6 +327,22 @@ class Lesson {
       }
       this.push('user', await this.userPayload(learnerText, 'learner_message'));
       const out = await this.model();
+
+      // Design turn: the model generated a whole template from a description
+      // instead of driving. Handle it and stop — no console action follows. The
+      // template can be thousands of tokens, so push a compact acknowledgement
+      // into history rather than the full object, which would inflate the cost
+      // and context of every subsequent turn.
+      if (out.design) {
+        this.push('assistant', JSON.stringify({
+          say: out.say,
+          design: { generated: true, format: out.design.format, title: out.design.title },
+        }));
+        this.transcript?.log('pilot-turn', { learner: learnerText, say: out.say, design: out.design.format, tookMs: Date.now() - t0 });
+        await this.handleDesign(out);
+        return;
+      }
+
       this.push('assistant', JSON.stringify(out));
 
       // Highlight runs BEFORE the narration: "I've outlined it" must already

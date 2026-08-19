@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld('tony', {
   downloadArtifacts: () => ipcRenderer.invoke('download-artifacts'),
   learnerInput: () => ipcRenderer.send('learner-input'),
   heard: (text) => ipcRenderer.send('heard', text),
+  // User pressed the close button: end the session and quit the app. The
+  // renderer tears down its Anam session first; main handles graceful quit.
+  endSession: () => ipcRenderer.send('end-session'),
   // Anam lifecycle breadcrumbs for the session transcript. Event names only —
   // main whitelists them; no payload crosses the bridge.
   note: (event) => ipcRenderer.send('transcript-note', String(event)),
